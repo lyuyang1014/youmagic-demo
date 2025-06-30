@@ -33,12 +33,109 @@ let treatmentParams = {
     areas: ['jawline']
 };
 
+// 移动端性能优化和内存管理
+let performanceOptimization = {
+    isMobile: window.innerWidth <= 768,
+    memoryCleanupInterval: null,
+    
+    // 初始化性能优化
+    init() {
+        if (this.isMobile) {
+            console.log('🚀 启用移动端性能优化模式');
+            this.enableMobileOptimizations();
+            this.startMemoryMonitoring();
+        }
+        
+        // 监听窗口大小变化
+        window.addEventListener('resize', () => {
+            const wasMobile = this.isMobile;
+            this.isMobile = window.innerWidth <= 768;
+            
+            if (wasMobile !== this.isMobile) {
+                console.log(`📱 设备模式切换: ${this.isMobile ? '移动端' : '桌面端'}`);
+                // 重新初始化Canvas
+                setTimeout(() => {
+                    initializeFaceCanvas();
+                }, 100);
+            }
+        });
+    },
+    
+    // 启用移动端优化
+    enableMobileOptimizations() {
+        // 禁用一些不必要的动画
+        document.documentElement.style.setProperty('--animation-duration', '0.2s');
+        
+        // 优化触摸事件
+        document.addEventListener('touchstart', function() {}, { passive: true });
+        document.addEventListener('touchmove', function() {}, { passive: true });
+        
+        // 减少Chart.js的动画时间
+        if (window.Chart) {
+            Chart.defaults.animation.duration = 500;
+        }
+    },
+    
+    // 开始内存监控
+    startMemoryMonitoring() {
+        // 每30秒进行一次内存清理
+        this.memoryCleanupInterval = setInterval(() => {
+            this.performMemoryCleanup();
+        }, 30000);
+        
+        // 页面可见性变化时进行清理
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.performMemoryCleanup();
+            }
+        });
+    },
+    
+    // 执行内存清理
+    performMemoryCleanup() {
+        try {
+            // 清理可能的内存泄漏
+            if (window.gc) {
+                window.gc();
+            }
+            
+            // 清理未使用的图片缓存
+            const images = document.querySelectorAll('img');
+            images.forEach(img => {
+                if (img.complete && !img.parentNode) {
+                    img.src = '';
+                }
+            });
+            
+            console.log('🧹 执行内存清理');
+        } catch (error) {
+            console.warn('内存清理失败:', error);
+        }
+    },
+    
+    // 清理资源
+    destroy() {
+        if (this.memoryCleanupInterval) {
+            clearInterval(this.memoryCleanupInterval);
+        }
+    }
+};
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
+    // 初始化性能优化
+    performanceOptimization.init();
+    
+    // 初始化应用
     initializeApp();
     bindEvents();
     setupCharts();
     setupAnimations();
+});
+
+// 页面卸载时清理资源
+window.addEventListener('beforeunload', function() {
+    performanceOptimization.destroy();
 });
 
 // 应用初始化
@@ -227,79 +324,215 @@ function playAnalysisSound(step) {
     console.log(`分析步骤 ${step + 1} 完成`);
 }
 
-// 面部画布初始化
+// 面部画布初始化 - 移动端优化版
 function initializeFaceCanvas() {
     const canvas = document.getElementById('faceCanvas');
+    if (!canvas) return;
+    
     const ctx = canvas.getContext('2d');
     
-    // 设置高清显示
-    const dpr = window.devicePixelRatio || 1;
+    // 移动端性能优化：限制DPR和Canvas尺寸
+    const isMobile = window.innerWidth <= 768;
+    const dpr = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : (window.devicePixelRatio || 1);
     const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
+    
+    // 移动端降低分辨率以节省内存
+    const scale = isMobile ? 0.8 : 1;
+    canvas.width = rect.width * dpr * scale;
+    canvas.height = rect.height * dpr * scale;
+    ctx.scale(dpr * scale, dpr * scale);
+    
+    // 优化Canvas渲染设置
+    ctx.imageSmoothingEnabled = !isMobile; // 移动端关闭抗锯齿以提升性能
     
     // 加载并绘制face.png图片
-    loadFaceImage(ctx);
+    loadFaceImage(ctx, isMobile);
 }
 
-// 加载面部图片
-function loadFaceImage(ctx) {
+// 加载面部图片 - 移动端优化版
+function loadFaceImage(ctx, isMobile = false) {
     const faceImage = new Image();
     
+    // 移动端预设较小的Canvas尺寸
+    const canvasWidth = isMobile ? 250 : 300;
+    const canvasHeight = isMobile ? 320 : 400;
+    
     faceImage.onload = function() {
+        console.log('✅ face.png 加载成功');
+        
         // 清除画布
-        ctx.clearRect(0, 0, 300, 400);
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
         
         // 绘制专业背景
-        drawProfessionalBackground(ctx);
+        drawProfessionalBackground(ctx, canvasWidth, canvasHeight);
         
         // 绘制面部图片
-        ctx.drawImage(faceImage, 0, 0, 300, 400);
+        ctx.drawImage(faceImage, 0, 0, canvasWidth, canvasHeight);
         
-        // 添加美观的热力图效果
-        drawBeautifulHeatMap(ctx);
-        
-        // 添加分析网格
-        drawAnalysisGrid(ctx);
-        
-        // 添加专业分析框架
-        drawAnalysisFramework(ctx);
+        // 移动端简化效果以提升性能
+        if (isMobile) {
+            drawSimplifiedHeatMap(ctx, canvasWidth, canvasHeight);
+            drawSimplifiedGrid(ctx, canvasWidth, canvasHeight);
+        } else {
+            // 添加完整的热力图效果
+            drawBeautifulHeatMap(ctx);
+            // 添加分析网格
+            drawAnalysisGrid(ctx);
+            // 添加专业分析框架
+            drawAnalysisFramework(ctx);
+        }
     };
     
-    faceImage.onerror = function() {
-        console.warn('无法加载face.png，使用默认绘制');
+    faceImage.onerror = function(error) {
+        console.warn('❌ 无法加载face.png，使用默认绘制', error);
+        console.log('🔄 回退到Canvas绘制模式');
+        
         // 如果图片加载失败，使用原来的绘制方法
         drawBackground(ctx);
         drawProfessionalFace(ctx);
-        drawBeautifulHeatMap(ctx);
-        drawAnalysisGrid(ctx);
+        
+        if (isMobile) {
+            drawSimplifiedHeatMap(ctx, canvasWidth, canvasHeight);
+            drawSimplifiedGrid(ctx, canvasWidth, canvasHeight);
+        } else {
+            drawBeautifulHeatMap(ctx);
+            drawAnalysisGrid(ctx);
+        }
     };
     
-    // 设置图片源
-    faceImage.src = 'face.png';
+    // 添加超时处理
+    setTimeout(() => {
+        if (!faceImage.complete) {
+            console.warn('⏰ face.png 加载超时，使用默认绘制');
+            faceImage.onerror();
+        }
+    }, 5000);
+    
+    // 设置图片源 - 尝试多个可能的路径
+    const imagePaths = [
+        'face.png',
+        './face.png',
+        '/youmagic-demo/face.png'
+    ];
+    
+    let currentPathIndex = 0;
+    
+    function tryNextPath() {
+        if (currentPathIndex < imagePaths.length) {
+            console.log(`🔍 尝试加载: ${imagePaths[currentPathIndex]}`);
+            faceImage.src = imagePaths[currentPathIndex];
+            currentPathIndex++;
+        }
+    }
+    
+    faceImage.onerror = function() {
+        if (currentPathIndex < imagePaths.length) {
+            console.warn(`❌ ${imagePaths[currentPathIndex - 1]} 加载失败，尝试下一个路径`);
+            tryNextPath();
+        } else {
+            console.warn('❌ 所有路径都加载失败，使用默认绘制');
+            // 使用原来的绘制方法
+            drawBackground(ctx);
+            drawProfessionalFace(ctx);
+            if (isMobile) {
+                drawSimplifiedHeatMap(ctx, canvasWidth, canvasHeight);
+                drawSimplifiedGrid(ctx, canvasWidth, canvasHeight);
+            } else {
+                drawBeautifulHeatMap(ctx);
+                drawAnalysisGrid(ctx);
+            }
+        }
+    };
+    
+    // 开始尝试第一个路径
+    tryNextPath();
 }
 
 // 绘制专业背景
-function drawProfessionalBackground(ctx) {
+function drawProfessionalBackground(ctx, width = 300, height = 400) {
     // 创建专业的医美背景
-    const gradient = ctx.createLinearGradient(0, 0, 300, 400);
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
     gradient.addColorStop(0, '#f8f9fa');
     gradient.addColorStop(0.5, '#e9ecef');
     gradient.addColorStop(1, '#dee2e6');
     
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 300, 400);
+    ctx.fillRect(0, 0, width, height);
     
-    // 添加微妙的医美纹理
+    // 添加微妙的医美纹理（移动端减少数量）
+    const isMobile = width < 300;
+    const textureCount = isMobile ? 15 : 30;
+    
     ctx.globalAlpha = 0.03;
     ctx.fillStyle = '#5D3E8E';
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < textureCount; i++) {
         ctx.beginPath();
-        ctx.arc(Math.random() * 300, Math.random() * 400, Math.random() * 3, 0, 2 * Math.PI);
+        ctx.arc(Math.random() * width, Math.random() * height, Math.random() * 3, 0, 2 * Math.PI);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
+}
+
+// 移动端简化热力图
+function drawSimplifiedHeatMap(ctx, width = 250, height = 320) {
+    ctx.save();
+    
+    // 设置较轻的混合模式
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.2;
+    
+    // 只绘制主要问题区域，减少计算量
+    
+    // 前额区域
+    const foreheadGradient = ctx.createRadialGradient(width/2, height*0.2, 0, width/2, height*0.2, 25);
+    foreheadGradient.addColorStop(0, 'rgba(255, 193, 7, 0.6)');
+    foreheadGradient.addColorStop(1, 'rgba(255, 193, 7, 0)');
+    
+    ctx.fillStyle = foreheadGradient;
+    ctx.beginPath();
+    ctx.ellipse(width/2, height*0.2, 25, 15, 0, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // 下颌线区域
+    const jawGradient = ctx.createRadialGradient(width/2, height*0.85, 0, width/2, height*0.85, 35);
+    jawGradient.addColorStop(0, 'rgba(255, 107, 107, 0.7)');
+    jawGradient.addColorStop(1, 'rgba(255, 107, 107, 0)');
+    
+    ctx.fillStyle = jawGradient;
+    ctx.beginPath();
+    ctx.ellipse(width/2, height*0.85, 30, 20, 0, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    ctx.restore();
+}
+
+// 移动端简化网格
+function drawSimplifiedGrid(ctx, width = 250, height = 320) {
+    ctx.save();
+    
+    // 绘制基本分析线
+    ctx.globalAlpha = 0.06;
+    ctx.strokeStyle = '#5D3E8E';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 6]);
+    
+    // 面部中线
+    ctx.beginPath();
+    ctx.moveTo(width/2, height*0.1);
+    ctx.lineTo(width/2, height*0.9);
+    ctx.stroke();
+    
+    // 三等分线
+    ctx.beginPath();
+    // 上1/3
+    ctx.moveTo(width*0.2, height*0.25);
+    ctx.lineTo(width*0.8, height*0.25);
+    // 下1/3
+    ctx.moveTo(width*0.2, height*0.65);
+    ctx.lineTo(width*0.8, height*0.65);
+    ctx.stroke();
+    
+    ctx.restore();
 }
 
 // 添加专业分析框架

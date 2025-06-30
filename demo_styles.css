@@ -1469,8 +1469,10 @@ body {
     }
     
     .face-overlay {
-        width: 280px;
-        height: 373px;
+        width: 250px;
+        height: 320px;
+        left: 50%;
+        transform: translateX(-50%);
     }
     
     /* 移动端热点优化 */
