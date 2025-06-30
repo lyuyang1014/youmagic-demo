@@ -25,98 +25,46 @@
             </div>
         </nav>
 
-        <!-- 步骤1：基础信息收集 -->
+        <!-- 步骤1：用户信息与关注点 -->
         <section class="step-section active" id="step-1">
             <div class="container">
-                <h2 class="section-title">个人信息采集</h2>
-                <div class="two-column">
-                    <div class="column">
-                        <div class="photo-upload-area">
-                            <div class="photo-placeholder" id="photoUpload">
-                                <div class="upload-icon">📷</div>
-                                <p>点击上传您的正面照片</p>
-                                <small>建议：光线充足，表情自然，无美颜</small>
-                            </div>
-                            <input type="file" id="photoInput" accept="image/*" style="display: none;">
+                <h2 class="section-title">选择客户档案</h2>
+                <p class="section-subtitle">选择一个客户案例，查看YOUMAGIC如何为其提供个性化分析与方案。</p>
+                
+                <div class="profile-selector">
+                    <div class="profile-card active" data-profile="profile1">
+                        <img src="face.png" alt="初老抗衰" class="profile-avatar">
+                        <div class="profile-info">
+                            <h3>案例一：初老抗衰</h3>
+                            <p>28岁，混合性偏干</p>
                         </div>
                     </div>
-                    <div class="column">
-                        <div class="form-group">
-                            <label>姓名</label>
-                            <input type="text" id="userName" placeholder="请输入您的姓名">
+                    <div class="profile-card" data-profile="profile2">
+                        <img src="treat.png" alt="熟龄紧致" class="profile-avatar">
+                        <div class="profile-info">
+                            <h3>案例二：熟龄紧致</h3>
+                            <p>38岁，干性</p>
                         </div>
-                        <div class="form-group">
-                            <label>年龄</label>
-                            <input type="number" id="userAge" min="18" max="70" placeholder="25">
-                        </div>
-                        <div class="form-group">
-                            <label>性别</label>
-                            <select id="userGender">
-                                <option value="female">女</option>
-                                <option value="male">男</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>皮肤类型</label>
-                            <select id="skinType">
-                                <option value="dry">干性皮肤</option>
-                                <option value="oily">油性皮肤</option>
-                                <option value="combination">混合性皮肤</option>
-                                <option value="sensitive">敏感肌肤</option>
-                            </select>
+                    </div>
+                    <div class="profile-card" data-profile="profile3">
+                        <img src="face.png" alt="痘肌改善" class="profile-avatar">
+                        <div class="profile-info">
+                            <h3>案例三：痘肌改善</h3>
+                            <p>23岁，油性痘肌</p>
                         </div>
                     </div>
                 </div>
-                
-                <div class="concerns-section">
-                    <h3>主要美学困扰（可多选）</h3>
-                    <div class="concerns-grid">
-                        <label class="concern-item">
-                            <input type="checkbox" value="sagging">
-                            <span class="checkmark"></span>
-                            <div class="concern-content">
-                                <strong>面部松弛</strong>
-                                <small>下颌线模糊、苹果肌下垂</small>
-                            </div>
-                        </label>
-                        <label class="concern-item">
-                            <input type="checkbox" value="wrinkles">
-                            <span class="checkmark"></span>
-                            <div class="concern-content">
-                                <strong>皱纹细纹</strong>
-                                <small>法令纹、抬头纹、鱼尾纹</small>
-                            </div>
-                        </label>
-                        <label class="concern-item">
-                            <input type="checkbox" value="pores">
-                            <span class="checkmark"></span>
-                            <div class="concern-content">
-                                <strong>毛孔粗大</strong>
-                                <small>T区毛孔明显、肌理粗糙</small>
-                            </div>
-                        </label>
-                        <label class="concern-item">
-                            <input type="checkbox" value="pigmentation">
-                            <span class="checkmark"></span>
-                            <div class="concern-content">
-                                <strong>色素沉着</strong>
-                                <small>色斑、晒斑、黄褐斑</small>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-                
-                <button class="btn-primary" onclick="nextStep()">开始面部分析</button>
+
+                <button class="btn-primary" onclick="nextStep()">开始分析</button>
             </div>
         </section>
 
-        <!-- 步骤2：面部分析 -->
+        <!-- 步骤2：面部分析与报告 -->
         <section class="step-section" id="step-2">
             <div class="container">
-                <h2 class="section-title">AI智能面部分析</h2>
+                <h2 class="section-title" id="analysis-title"></h2>
                 
-                <!-- 分析进度 -->
-                <div class="analysis-progress" id="analysisProgress">
+                <div class="analysis-progress">
                     <div class="progress-item active">
                         <div class="progress-icon">🔍</div>
                         <span>面部特征识别</span>
@@ -134,133 +82,46 @@
                         <span>分析完成</span>
                     </div>
                 </div>
-
-                <!-- 分析结果 -->
-                <div class="analysis-results" id="analysisResults" style="display: none;">
+                
+                <div id="analysisResults" style="display: none;">
                     <div class="two-column">
                         <div class="column">
-                            <!-- 交互式面部地图 -->
                             <div class="face-analysis-container">
-                                <h3>交互式面部分析地图</h3>
-                                <div class="face-map" id="faceMap">
+                                <h3>智能面部扫描</h3>
+                                <div class="face-map">
                                     <canvas id="faceCanvas" width="300" height="400"></canvas>
-                                    <div class="face-overlay">
-                                        <!-- 增强版面部热点 -->
-                                        <div class="hotspot medium" style="top: 65px; left: 135px;" 
-                                             data-region="前额" 
-                                             data-issue="细纹形成" 
-                                             data-severity="medium"
-                                             data-description="前额横纹，建议紧致提升">1</div>
-                                        
-                                        <div class="hotspot mild" style="top: 120px; left: 110px;" 
-                                             data-region="左眼周" 
-                                             data-issue="鱼尾纹" 
-                                             data-severity="mild"
-                                             data-description="轻微动态纹路，预防性护理">2</div>
-                                        
-                                        <div class="hotspot mild" style="top: 120px; left: 165px;" 
-                                             data-region="右眼周" 
-                                             data-issue="鱼尾纹" 
-                                             data-severity="mild"
-                                             data-description="轻微动态纹路，预防性护理">3</div>
-                                        
-                                        <div class="hotspot mild" style="top: 165px; left: 95px;" 
-                                             data-region="左面颊" 
-                                             data-issue="轻微松弛" 
-                                             data-severity="mild"
-                                             data-description="初期松弛，定期维护">4</div>
-                                        
-                                        <div class="hotspot mild" style="top: 165px; left: 180px;" 
-                                             data-region="右面颊" 
-                                             data-issue="轻微松弛" 
-                                             data-severity="mild"
-                                             data-description="初期松弛，定期维护">5</div>
-                                        
-                                        <div class="hotspot severe" style="top: 300px; left: 135px;" 
-                                             data-region="下颌线" 
-                                             data-issue="松弛下垂" 
-                                             data-severity="severe"
-                                             data-description="重点改善区域，需集中治疗">6</div>
-                                    </div>
-                                </div>
-                                <div class="region-details" id="regionDetails">
-                                    <p>点击面部标记点查看详细分析</p>
+                                    <img src="face.png" class="face-overlay" alt="Face Overlay" id="face-overlay-img">
+                                    <!-- ... hotspots ... -->
                                 </div>
                             </div>
                         </div>
-                        
                         <div class="column">
-                            <!-- 综合评分雷达图 -->
-                            <div class="chart-container">
-                                <h3>皮肤健康指数</h3>
-                                <canvas id="radarChart" width="300" height="300"></canvas>
-                            </div>
-                            
-                            <!-- 移动端简化皮肤指数 -->
+                            <!-- 移动端专属皮肤分数 -->
                             <div class="mobile-skin-scores">
-                                <h3>皮肤健康指数</h3>
-                                <div class="mobile-scores-grid">
-                                    <div class="mobile-score-item">
-                                        <div class="mobile-score-label">弹性</div>
-                                        <div class="mobile-score-value">68</div>
-                                        <div class="mobile-score-bar">
-                                            <div class="mobile-score-fill" style="width: 68%"></div>
-                                        </div>
-                                    </div>
-                                    <div class="mobile-score-item">
-                                        <div class="mobile-score-label">水分</div>
-                                        <div class="mobile-score-value">45</div>
-                                        <div class="mobile-score-bar">
-                                            <div class="mobile-score-fill" style="width: 45%"></div>
-                                        </div>
-                                    </div>
-                                    <div class="mobile-score-item">
-                                        <div class="mobile-score-label">紧致</div>
-                                        <div class="mobile-score-value">62</div>
-                                        <div class="mobile-score-bar">
-                                            <div class="mobile-score-fill" style="width: 62%"></div>
-                                        </div>
-                                    </div>
-                                    <div class="mobile-score-item">
-                                        <div class="mobile-score-label">均匀</div>
-                                        <div class="mobile-score-value">78</div>
-                                        <div class="mobile-score-bar">
-                                            <div class="mobile-score-fill" style="width: 78%"></div>
-                                        </div>
-                                    </div>
-                                    <div class="mobile-score-item">
-                                        <div class="mobile-score-label">光泽</div>
-                                        <div class="mobile-score-value">55</div>
-                                        <div class="mobile-score-bar">
-                                            <div class="mobile-score-fill" style="width: 55%"></div>
-                                        </div>
-                                    </div>
-                                    <div class="mobile-score-item">
-                                        <div class="mobile-score-label">细腻</div>
-                                        <div class="mobile-score-value">72</div>
-                                        <div class="mobile-score-bar">
-                                            <div class="mobile-score-fill" style="width: 72%"></div>
-                                        </div>
-                                    </div>
+                                <h3>核心皮肤指标</h3>
+                                <div class="mobile-scores-grid" id="mobile-scores-grid-container">
+                                    <!-- JS动态生成指标卡片 -->
                                 </div>
                             </div>
                             
-                            <!-- 年龄分析 -->
+                            <!-- 桌面端图表 (将被CSS隐藏) -->
+                            <div class="chart-container">
+                                <h3>多维度皮肤分析雷达图</h3>
+                                <canvas id="skinRadarChart"></canvas>
+                            </div>
+
                             <div class="age-analysis">
-                                <h3>肌肤年龄评估</h3>
+                                <h3>肌龄评估</h3>
                                 <div class="age-comparison">
                                     <div class="age-item">
-                                        <span class="age-label">实际年龄</span>
-                                        <span class="age-value" id="realAge">25</span>
+                                        <span class="age-label">生理年龄</span>
+                                        <span class="age-value" id="real-age"></span>
                                     </div>
+                                    <div class="age-gap" id="age-gap-value"></div>
                                     <div class="age-item">
-                                        <span class="age-label">肌肤年龄</span>
-                                        <span class="age-value" id="skinAge">28</span>
+                                        <span class="age-label">预测肌龄</span>
+                                        <span class="age-value" id="skin-age"></span>
                                     </div>
-                                    <div class="age-gap" id="ageGap">+3岁</div>
-                                </div>
-                                <div class="age-recommendation">
-                                    <p>您的肌肤年龄略高于实际年龄，建议进行紧致提升护理</p>
                                 </div>
                             </div>
                         </div>

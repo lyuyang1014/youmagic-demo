@@ -2499,4 +2499,148 @@ body {
         font-size: 0.65em;
         padding: 3px 6px;
     }
+}
+
+/* 步骤1: 客户档案选择器 */
+.profile-selector {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+    margin: 30px 0;
+}
+
+.profile-card {
+    display: flex;
+    align-items: center;
+    background: white;
+    padding: 15px;
+    border-radius: 15px;
+    border: 2px solid var(--light-grey);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow);
+}
+
+.profile-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-hover);
+}
+
+.profile-card.active {
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 25px rgba(93, 62, 142, 0.2);
+    background: var(--secondary-color);
+}
+
+.profile-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    margin-right: 15px;
+    object-fit: cover;
+    border: 2px solid white;
+}
+
+.profile-info h3 {
+    margin: 0 0 5px 0;
+    color: var(--primary-color);
+    font-size: 1.1em;
+}
+
+.profile-info p {
+    margin: 0;
+    color: var(--medium-grey);
+    font-size: 0.9em;
+}
+
+/* 移动端专属皮肤分数卡片 */
+.mobile-skin-scores {
+    display: block; /* 默认在移动端显示 */
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: var(--shadow);
+    margin-top: 20px;
+}
+
+.mobile-skin-scores h3 {
+    font-size: 1.2em;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.mobile-scores-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.mobile-score-item {
+    background: var(--secondary-color);
+    padding: 15px;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.mobile-score-label {
+    font-size: 0.85em;
+    color: var(--medium-grey);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.mobile-score-value {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1;
+    margin-bottom: 10px;
+}
+
+.mobile-score-bar {
+    height: 6px;
+    background: var(--light-grey);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.mobile-score-fill {
+    height: 100%;
+    background: var(--gradient-primary);
+    border-radius: 3px;
+    transition: width 0.8s ease-in-out;
+}
+
+/* 媒体查询 - 隐藏桌面端元素，显示移动端元素 */
+@media (max-width: 768px) {
+    .chart-container,
+    .region-details,
+    .customizer-sidebar, /* 隐藏旧的治疗参数侧边栏 */
+    .plans-grid /* 隐藏旧的方案网格 */ {
+        display: none !important;
+    }
+
+    .mobile-skin-scores {
+        display: block !important;
+    }
+
+    .face-analysis-container, .age-analysis {
+        margin-bottom: 20px;
+    }
+    
+    .two-column .column:last-child {
+        margin-top: 0;
+    }
+}
+
+@media (min-width: 769px) {
+    .mobile-skin-scores {
+        display: none !important; /* 在桌面端隐藏移动端计分卡 */
+    }
+    
+    .profile-selector {
+        grid-template-columns: repeat(3, 1fr);
+    }
 } 

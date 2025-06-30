@@ -181,6 +181,40 @@ function initializeApp() {
     setTimeout(() => {
         document.body.classList.add('loaded');
     }, 500);
+    
+    bindProfileSelectorEvents();
+    // 默认加载一次，确保初始界面有数据
+    updateUIForProfile(currentUserProfile);
+}
+
+function bindProfileSelectorEvents() {
+    const profileCards = document.querySelectorAll('.profile-card');
+    profileCards.forEach(card => {
+        card.addEventListener('click', function() {
+            // 更新当前选择的档案
+            currentUserProfile = this.getAttribute('data-profile');
+            
+            // 更新卡片激活状态
+            profileCards.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            
+            // 用新数据更新所有相关UI
+            updateUIForProfile(currentUserProfile);
+            console.log(`已切换到档案: ${currentUserProfile}`);
+        });
+    });
+}
+
+function updateUIForProfile(profileId) {
+    const profile = userProfiles[profileId];
+    if (!profile) return;
+
+    // 更新第一步的头像等信息 (如果需要)
+    // 更新分析报告标题
+    const analysisTitle = document.getElementById('analysis-title');
+    if (analysisTitle) {
+        analysisTitle.textContent = `${profile.name}的AI智能面部分析报告`;
+    }
 }
 
 // 事件绑定
@@ -344,11 +378,10 @@ function startFaceAnalysis() {
                 nextButton.style.display = 'inline-block';
                 nextButton.classList.add('bounce-in');
                 
-                // 初始化图表
-                initializeRadarChart();
-                initializeFaceCanvas();
-                updateDataPanels();
-            }, 500);
+                // 使用当前选择的档案数据更新UI
+                updateAnalysisReport(currentUserProfile);
+                initializeFaceCanvas(); // 可在此函数内部也传入profile数据
+            }, 500 + (progressItems.length * 1000));
         }
     }, 1000);
 }
@@ -2690,3 +2723,149 @@ function getTreatmentAreaInfo(area, treatmentType) {
         cycle: '根据个人情况定制'
     };
 }
+
+const userProfiles = {
+    'profile1': {
+        name: "王女士",
+        age: 28,
+        skinType: "混合性偏干",
+        profileDesc: "初老抗衰",
+        avatar: "face.png", // 稍后可替换
+        analysis: {
+            skinAge: 32,
+            scores: {
+                elasticity: 65,
+                moisture: 58,
+                wrinkles: 72,
+                pigmentation: 85,
+                pores: 78,
+                sensitivity: 80,
+            },
+            summary: "肌肤整体处于轻度老化阶段，胶原蛋白流失加速，眼周及法令纹区域出现动态性皱纹，需即刻启动抗衰护理。",
+            regions: {
+                forehead: { issue: "抬头纹", severity: "轻度", details: "因表情习惯产生动态性抬头纹，皮层弹性下降。", recommendation: "建议通过射频提升前额紧致度。" },
+                eyes: { issue: "眼周细纹", severity: "中度", details: "眼周皮肤干燥，出现干纹和表情纹，是面部最早出现衰老的信号。", recommendation: "推荐使用眼部专用探头进行精准提拉。" },
+                cheeks: { issue: "法令纹", severity: "中度", details: "鼻唇沟加深，苹果肌有轻微下垂趋势，是面部松弛的关键指标。", recommendation: "重点加强中面部提拉，刺激胶原再生。" },
+                jawline: { issue: "轮廓清晰", severity: "优秀", details: "下颌线紧致，无明显脂肪堆积或松弛。", recommendation: "保持良好，可做预防性紧致维护。" },
+                nose: { issue: "毛孔", severity: "轻度", details: "鼻翼两侧毛孔因油脂分泌而略显粗大。", recommendation: "射频治疗可帮助收缩毛孔。" },
+                chin: { issue: "肤色均匀", severity: "良好", details: "下巴区域肤色均匀，无明显痘印或色素沉着。", recommendation: "继续保持。" }
+            }
+        },
+        treatmentPlan: {
+            chiefPlan: {
+                name: "YOUMAGIC™ 眼周焕活与中面部提升疗程",
+                description: "针对28岁初老肌定制，精准对抗第一道细纹，重塑面部年轻结构，实现预防与治疗双重功效。",
+                coreProject: "超频炮精准提拉 (眼部+面部)",
+                parameters: {
+                    intensity: "5-7档 (温和-中效)",
+                    shots: "900发",
+                    probe: "眼部专用探头 + 面部4.0探头"
+                },
+                add_ons: "术后导入医用级胶原蛋白精华",
+                cycle: "建议3次为一个完整疗程，每次间隔30-45天。"
+            }
+        },
+        results: {
+            improvement: "78%",
+            pain: "几乎无痛",
+            recovery: "24-48小时",
+            cost: "¥12,800"
+        }
+    },
+    'profile2': {
+        name: "李女士",
+        age: 38,
+        skinType: "干性",
+        profileDesc: "熟龄紧致",
+        avatar: "treat.png", // 稍后可替换
+        analysis: {
+            skinAge: 45,
+            scores: {
+                elasticity: 45,
+                moisture: 42,
+                wrinkles: 55,
+                pigmentation: 68,
+                pores: 82,
+                sensitivity: 75,
+            },
+            summary: "面部呈现显著的松弛和下垂迹象，胶原蛋白和弹性纤维流失严重，下颌线模糊，是典型的熟龄衰老特征。",
+            regions: {
+                forehead: { issue: "静态皱纹", severity: "中度", details: "已形成静态抬头纹，即使无表情时也清晰可见。", recommendation: "需采用更高能量进行深层射频刺激。" },
+                eyes: { issue: "眼袋与下垂", severity: "严重", details: "眼周皮肤松弛，形成眼袋和多重皱纹，眼神略显疲态。", recommendation: "眼部综合抗衰是本次治疗重点。" },
+                cheeks: { issue: "全面部松弛", severity: "严重", details: "苹果肌下移，法令纹、木偶纹三线齐现，中面部容积流失明显。", recommendation: "启动全面部SMAS筋膜层提拉。" },
+                jawline: { issue: "轮廓模糊", severity: "严重", details: "下颌缘脂肪堆积与皮肤松弛导致轮廓线消失，出现双下巴。", recommendation: "下颌缘重塑是改善面部年轻化的关键。" },
+                nose: { issue: "肤质尚可", severity: "良好", details: "鼻部皮肤状态相对较好。", recommendation: "常规维护即可。" },
+                chin: { issue: "颈纹", severity: "中度", details: "颈部出现横向纹路，皮肤松弛。", recommendation: "治疗范围需延伸至颈部。" }
+            }
+        },
+        treatmentPlan: {
+            chiefPlan: {
+                name: "YOUMAGIC™ 全面部轮廓重塑与深度抗衰疗程",
+                description: "为38岁熟龄肌定制的强效抗衰方案，目标是重建深层支撑结构，显著提升面部轮廓，实现视觉年龄的逆转。",
+                coreProject: "超频炮MAX深度提拉",
+                parameters: {
+                    intensity: "8-10档 (强效)",
+                    shots: "1200发 (全面部+颈部)",
+                    probe: "面部4.0探头 + 颈部专用探头"
+                },
+                add_ons: "搭配使用生物刺激剂，促进胶原再生",
+                cycle: "建议4-5次为一个完整疗程，每次间隔45-60天。"
+            }
+        },
+        results: {
+            improvement: "85%",
+            pain: "轻微热感",
+            recovery: "3-5天",
+            cost: "¥25,600"
+        }
+    },
+    'profile3': {
+        name: "张小姐",
+        age: 23,
+        skinType: "油性痘肌",
+        profileDesc: "痘肌改善",
+        avatar: "face.png", // 稍后可替换
+        analysis: {
+            skinAge: 25,
+            scores: {
+                elasticity: 88,
+                moisture: 65,
+                wrinkles: 95,
+                pigmentation: 70,
+                pores: 50,
+                sensitivity: 60,
+            },
+            summary: "皮肤年轻，但油脂分泌旺盛导致毛孔粗大和反复性痘痘，留下大量新生痘印，水油平衡和屏障修复是核心问题。",
+            regions: {
+                forehead: { issue: "闭口粉刺", severity: "中度", details: "额头区域有较多闭口粉刺，皮肤不够平滑。", recommendation: "射频治疗有助于抑制皮脂腺过度活跃。" },
+                eyes: { issue: "状态良好", severity: "优秀", details: "眼周皮肤紧致，无明显问题。", recommendation: "保持即可。" },
+                cheeks: { issue: "新生痘印", severity: "严重", details: "两颊有大量红色和褐色痘印，是炎症后色素沉着(PIH)的典型表现。", recommendation: "通过射频加速新陈代谢，淡化痘印。" },
+                jawline: { issue: "偶发性痘痘", severity: "轻度", details: "下颌缘偶有炎症性痘痘发生。", recommendation: "需注意清洁和内分泌调节。" },
+                nose: { issue: "黑头与毛孔", severity: "严重", details: "鼻头和鼻翼有明显黑头和毛孔堵塞。", recommendation: "射频热效应能帮助深层清洁和收缩毛孔。" },
+                chin: { issue: "陈旧痘印", severity: "中度", details: "下巴区域有部分颜色较深的陈旧痘印。", recommendation: "治疗需要更有耐心。" }
+            }
+        },
+        treatmentPlan: {
+            chiefPlan: {
+                name: "YOUMAGIC™ 水油平衡与痘肌修复疗程",
+                description: "专为年轻油性痘肌设计，旨在调节皮脂分泌、加速痘印代谢、收缩粗大毛孔，重建健康的皮肤屏障。",
+                coreProject: "超频炮净肤模式",
+                parameters: {
+                    intensity: "4-6档 (净肤-修复)",
+                    shots: "600发",
+                    probe: "面部修复专用探头"
+                },
+                add_ons: "配合使用含有水杨酸或果酸的医用护肤品",
+                cycle: "建议每月1次，连续3-6个月，以稳定皮肤状态。"
+            }
+        },
+        results: {
+            improvement: "90% (痘肌改善率)",
+            pain: "无痛",
+            recovery: "几乎无恢复期",
+            cost: "¥6,800"
+        }
+    }
+};
+
+let currentUserProfile = 'profile1'; // 默认加载案例一
