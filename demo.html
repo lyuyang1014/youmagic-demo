@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOUMAGIC 个性化美学分析报告</title>
+    <style>
+        :root {
+            --primary-color: #5D3E8E; /* YOUMAGIC 紫色 */
+            --dark-grey: #333333;
+            --medium-grey: #666666;
+            --light-grey: #f4f4f9;
+            --border-color: #e0e0e0;
+            --success-color: #28a745;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+            margin: 0;
+            background-color: var(--light-grey);
+            color: var(--dark-grey);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: #ffffff;
+            padding: 25px 40px;
+            text-align: center;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        header p {
+            margin: 5px 0 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        main {
+            padding: 30px 40px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 30px;
+        }
+        .section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 10px;
+        }
+
+        .section-title {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 15px;
+        }
+
+        .two-column {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+        }
+
+        .column {
+            flex: 1;
+        }
+        
+        .user-photo-placeholder {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 20px;
+            text-align: center;
+            color: var(--medium-grey);
+            background-color: #fafafa;
+        }
+        .user-photo-placeholder svg {
+            width: 60px;
+            height: 60px;
+            margin-bottom: 15px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+        }
+        
+        .input-group textarea {
+            width: 100%;
+            height: 80px;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            font-size: 14px;
+            resize: vertical;
+        }
+        
+        .checkbox-group label, .radio-group label {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            background-color: var(--light-grey);
+            transition: background-color 0.3s;
+        }
+        
+        .checkbox-group label:hover, .radio-group label:hover {
+            background-color: #e9e4f0;
+        }
+
+        .checkbox-group input, .radio-group input {
+            margin-right: 12px;
+        }
+
+        .tech-card {
+            background-color: #f9f7fc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #e0d7f0;
+        }
+
+        .tech-card h4 {
+            margin: 0 0 10px;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        .tech-card p {
+            margin: 0;
+            font-size: 14px;
+            color: var(--medium-grey);
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 20px;
+            border-left: 2px solid var(--primary-color);
+        }
+        .timeline-item {
+            margin-bottom: 25px;
+            position: relative;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -27px;
+            top: 5px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ffffff;
+            border: 2px solid var(--primary-color);
+        }
+        .timeline-item h4 { margin: 0 0 5px; }
+        .timeline-item p { margin: 0; color: var(--medium-grey); }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .gallery img {
+            width: 100%;
+            border-radius: 8px;
+            aspect-ratio: 1/1;
+            object-fit: cover;
+        }
+        
+        cite {
+            font-style: normal;
+            font-size: 11px;
+            color: var(--medium-grey);
+            opacity: 0.8;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: var(--medium-grey);
+            background-color: var(--light-grey);
+        }
+        
+        @media (max-width: 768px) {
+            .two-column {
+                flex-direction: column;
+            }
+            header, main {
+                padding: 20px;
+            }
+            header h1 { font-size: 24px; }
+            .section-title { font-size: 20px; }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 id="report-title">为 [用户姓名] 打造的专属美学分析报告</h1>
+            <p>报告生成日期: <span id="report-date"></span></p>
+        </header>
+
+        <main>
+            <section class="section">
+                <h2 class="section-title">您的美学分析与核心诉求</h2>
+                <div class="two-column">
+                    <div class="column">
+                        <div class="user-photo-placeholder">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                            <strong>您的全脸照片</strong>
+                            <p style="font-size: 12px; margin-top: 5px;">(此处为用户上传的照片示意)</p>
+                        </div>
+                    </div>
+                    <div class="column">
+                        <div class="input-group">
+                            <label for="main-concern">您的主要困扰 (可手动输入):</label>
+                            <textarea id="main-concern" rows="3">我最在意的是下颌线越来越模糊，感觉脸颊的肉有点往下掉了。</textarea>
+                        </div>
+                        <div class="input-group">
+                            <label>其他您关注的问题 (可多选):</label>
+                            <div class="checkbox-group">
+                                <label><input type="checkbox" checked> 下颌线模糊 [cite: 22, 104]</label>
+                                <label><input type="checkbox" checked> 皮肤松弛、缺乏弹性 [cite: 8, 22]</label>
+                                <label><input type="checkbox"> 法令纹 [cite: 22, 104]</label>
+                                <label><input type="checkbox"> 泪沟纹/眼袋 [cite: 22, 104]</label>
+                                <label><input type="checkbox"> 抬头纹 [cite: 22, 104]</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2 class="section-title">解决方案：YOUMAGIC® 新一代单极射频</h2>
+                <p>基于您的美学诉求，我们为您推荐YOUMAGIC®作为核心解决方案。它并非传统的表面抗衰，而是通过精准的深层加热技术，从根源激活您自身的胶原蛋白新生能力。</p>
+                <div class="tech-card">
+                    <h4>科学原理：深层容积式加热</h4>
+                    <p>YOUMAGIC®采用<strong>6.78MHz单极射频</strong>，能量可穿透表皮，精准作用于真皮层及皮下纤维间隔 [cite: 6, 8, 17]。这一过程产生两种核心效果：</p>
+                    <ul>
+                        <li><strong>胶原即刻收缩：</strong>热能使胶原蛋白三螺旋结构中的氢键断裂，胶原纤维立刻收缩，您当场就能感受到紧致效果 [cite: 7, 68]。</li>
+                        <li><strong>胶原持续新生：</strong>热刺激会启动皮肤的“微炎症”愈合反应，激活成纤维细胞，使其在未来3-6个月内持续合成新的胶原蛋白，实现长效的紧致与年轻化 [cite: 7, 68, 105]。</li>
+                    </ul>
+                </div>
+            </section>
+            
+            <section class="section">
+                <h2 class="section-title">您的个性化YOUMAGIC®治疗方案</h2>
+                <p>YOUMAGIC®的核心优势在于其高度的**可定制性**。我们将根据您的具体情况，为您量身打造一套兼顾效果与舒适的专属治疗方案。</p>
+                
+                <div class="input-group">
+                    <label>第一步：请评估您的皮肤敏感度</label>
+                    <div class="radio-group" id="sensitivity-group">
+                        <label><input type="radio" name="sensitivity" value="high"> 高敏感 (首次接触医美或对疼痛非常敏感)</label>
+                        <label><input type="radio" name="sensitivity" value="medium" checked> 中等敏感 (有过一些医美经历，耐受度一般)</label>
+                        <label><input type="radio" name="sensitivity" value="low"> 低敏感 (耐受度高，追求高效)</label>
+                    </div>
+                </div>
+
+                <div id="sensitivity-advice" class="tech-card" style="background-color: #e9f5ea;">
+                    </div>
+
+                <h4>第二步：技术参数的精准调控</h4>
+                <div class="two-column">
+                    <div class="column">
+                         <div class="tech-card">
+                            <h4>动态脉冲技术</h4>
+                            <p>我们将根据您的敏感度选择，灵活使用长短脉冲。长脉冲升温舒缓，缓解疼痛；短脉冲快速累积热量，减少治疗时间 [cite: 13, 25]。</p>
+                        </div>
+                         <div class="tech-card">
+                            <h4>AI能量匹配</h4>
+                            <p>设备能实时检测您皮肤的阻抗值，并对每一发能量进行智能补偿，确保能量精准有效，直达目标层次 [cite: 80]。</p>
+                        </div>
+                    </div>
+                    <div class="column">
+                        <div class="tech-card">
+                            <h4>多维智能温控</h4>
+                            <p>通过每个脉冲中的多个温度监控点和算法，精准控制制冷量，使表皮温度变化更平稳，极大提升舒适度，无需敷麻 [cite: 11, 81]。</p>
+                        </div>
+                        <div class="tech-card">
+                            <h4>安全与认证</h4>
+                            <p>YOUMAGIC®是国内首款获得NMPA三类医疗器械认证的同类设备，并通过独创的“云端激活验真”技术，从根源杜绝假货，保障您的安全 [cite: 3, 14, 51, 52]。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h4>您的建议疗程参数：</h4>
+                <ul style="list-style-type: '✓  '; padding-left: 20px;">
+                    <li><strong>治疗区域：</strong>全面部，重点加强下颌缘及面颊</li>
+                    <li><strong>推荐发数：</strong>900发 [cite: 6]</li>
+                    <li><strong>核心技术：</strong>6.78MHz 单极射频 [cite: 6]</li>
+                </ul>
+
+            </section>
+
+            <section class="section">
+                <h2 class="section-title">效果展现与预期</h2>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <h4>治疗即刻</h4>
+                        <p>胶原纤维即刻收缩，您可以看到约20-30%的紧致提拉效果，面部轮廓感增强 [cite: 8]。</p>
+                    </div>
+                    <div class="timeline-item">
+                        <h4>治疗后 1 个月</h4>
+                        <p>胶原开始进入新生和重排期，皮肤质感变得更细腻、紧实 [cite: 7, 68]。</p>
+                    </div>
+                    <div class="timeline-item">
+                        <h4>治疗后 3-6 个月</h4>
+                        <p>胶原新生达到高峰，是效果最佳的时期。面部轮廓更加清晰，松弛和皱纹得到显著改善 [cite: 23, 68, 105]。</p>
+                    </div>
+                </div>
+                <div class="gallery">
+                    <figure><img src="https://storage.googleapis.com/generativeai-assets/9141f177-3e4b-449e-8c3b-76f7560e2273/image.png" alt="效果对比1"><figcaption style="font-size: 11px; text-align: center;">下颌线提升效果 [cite: 22]</figcaption></figure>
+                    <figure><img src="https://storage.googleapis.com/generativeai-assets/e388c3a9-e85c-4545-9786-8809968417c8/image.png" alt="效果对比2"><figcaption style="font-size: 11px; text-align: center;">法令纹淡化效果 [cite: 22]</figcaption></figure>
+                    <figure><img src="https://storage.googleapis.com/generativeai-assets/61fccfcc-8777-4499-90f7-b080f555e717/image.png" alt="效果对比3"><figcaption style="font-size: 11px; text-align: center;">抬头纹改善效果 [cite: 22]</figcaption></figure>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <footer>
+        <p>YOUMAGIC® 以严谨的科学态度，为您开启科技抗衰新时代。</p>
+        <p><strong>免责声明：</strong>本报告为功能示意Demo。所有信息仅供参考，具体治疗方案请务必与您的专业医师沟通确认。</p>
+    </footer>
+
+    <script>
+        // 设置报告日期
+        document.getElementById('report-date').textContent = new Date().toLocaleDateString('zh-CN');
+
+        // 敏感度建议
+        const sensitivityGroup = document.getElementById('sensitivity-group');
+        const adviceBox = document.getElementById('sensitivity-advice');
+        
+        const adviceText = {
+            high: '<strong>个性化建议：</strong>检测到您选择了“高敏感”。我们将为您采用 <strong>“低功率/长脉冲”</strong> 的组合 [cite: 94]。这种方式可使热量温和累积，让整个治疗过程更舒缓、更舒适。',
+            medium: '<strong>个性化建议：</strong>检测到您选择了“中等敏感”。我们将为您采用 <strong>“中等功率/中等脉冲”</strong> 的均衡组合 [cite: 94]。这能在保证舒适度的前提下，高效地传递能量，达到理想效果。',
+            low: '<strong>个性化建议：</strong>检测到您选择了“低敏感”。我们将为您采用 <strong>“高功率/低脉冲”</strong> 的高效组合 [cite: 94]。这种方式能快速累积热量，缩短单次治疗时间，为您带来更显著的即刻改变。'
+        };
+
+        function updateAdvice() {
+            const selectedValue = document.querySelector('input[name="sensitivity"]:checked').value;
+            adviceBox.innerHTML = adviceText[selectedValue];
+        }
+
+        sensitivityGroup.addEventListener('change', updateAdvice);
+
+        // 初始化
+        updateAdvice();
+    </script>
+</body>
+</html>
