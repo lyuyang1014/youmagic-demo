@@ -3,104 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>YOUMAGIC™ 专家诊断报告</title>
-    <link rel="stylesheet" href="demo_styles.css?v=2.0">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>YOUMAGIC™ 智能诊断系统</title>
+    <link rel="stylesheet" href="demo_styles.css?v=3.1">
 </head>
 <body>
-    <div class="report-container">
-        <!-- 顶部：客户档案切换器 -->
-        <header class="profile-switcher-header">
-            <div class="profile-switcher" id="profile-switcher-container">
-                <!-- JS动态生成 -->
+    <div id="app-container">
+        <!-- 步骤一：智能问诊 -->
+        <section id="step-1" class="app-step active">
+            <div class="container">
+                <header class="step-header">
+                    <img src="logo.png" alt="YOUMAGIC Logo" class="logo">
+                    <h2>开启您的专属肌肤诊断</h2>
+                    <p>仅需2个问题，即可生成为您量身定制的专业报告</p>
+                </header>
+                <form id="consultation-form">
+                    <div class="form-group" data-group="age">
+                        <label>1. 您的年龄范围？</label>
+                        <div class="options-group">
+                            <button type="button" class="option-btn" data-value="20-29">20-29岁</button>
+                            <button type="button" class="option-btn" data-value="30-39">30-39岁</button>
+                            <button type="button" class="option-btn" data-value="40+">40岁+</button>
+                        </div>
+                    </div>
+                    <div class="form-group" data-group="concern">
+                        <label>2. 您最关注的核心问题？</label>
+                        <div class="options-group">
+                            <button type="button" class="option-btn" data-value="anti-aging">改善皱纹和松弛</button>
+                            <button type="button" class="option-btn" data-value="acne-pores">解决痘痘和毛孔</button>
+                        </div>
+                    </div>
+                    <button type="submit" class="submit-btn" disabled>生成我的专属报告</button>
+                </form>
             </div>
-        </header>
+        </section>
 
-        <!-- 主体：诊断报告内容 -->
-        <main class="report-content">
-            <!-- 模块一：首席专家诊断概要 -->
-            <section class="report-module" id="summary-module">
-                <div class="profile-main-avatar-wrapper">
-                    <img src="" alt="客户头像" id="main-avatar">
+        <!-- 步骤二：AI分析动画 -->
+        <section id="step-2" class="app-step">
+            <div class="container-center">
+                <div class="analysis-animation">
+                    <div class="spinner"></div>
+                    <p id="analysis-text">正在连接YOUMAGIC云端数据库...</p>
                 </div>
-                <h1 class="customer-name" id="customer-name"></h1>
-                <p class="customer-tags" id="customer-tags"></p>
-                <div class="diagnosis-summary">
-                    <h2 class="module-title">AI首席专家诊断概要</h2>
-                    <p class="summary-text" id="summary-text"></p>
-                </div>
-                <div class="core-issues" id="core-issues-container">
-                    <!-- JS动态生成 -->
-                </div>
-            </section>
+            </div>
+        </section>
 
-            <!-- 模块二：多维皮肤数据解析 -->
-            <section class="report-module" id="data-analysis-module">
-                <h2 class="module-title">多维皮肤数据解析</h2>
-                <div class="age-comparison-new">
-                    <div class="age-item-new">
-                        <span class="age-label-new">生理年龄</span>
-                        <span class="age-value-new" id="real-age-new"></span>
+        <!-- 步骤三：专属诊断报告 -->
+        <section id="step-3" class="app-step">
+            <div class="report-container">
+                <header class="report-header">
+                    <h1 id="report-title"></h1>
+                    <button id="back-to-form">重新诊断</button>
+                </header>
+                <main class="report-content">
+                    <!-- 数据解读模块 -->
+                    <div class="report-module">
+                        <h2 class="module-title"><span>数据解读</span></h2>
+                        <div id="data-interpretation-container"></div>
                     </div>
-                    <div class="age-gap-new" id="age-gap-new"></div>
-                    <div class="age-item-new">
-                        <span class="age-label-new">预测肌龄</span>
-                        <span class="age-value-new" id="skin-age-new"></span>
+                    <!-- 首席方案模块 -->
+                    <div class="report-module">
+                        <h2 class="module-title"><span>首席定制化治疗方案</span></h2>
+                        <div id="master-plan-container"></div>
                     </div>
-                </div>
-                <div class="layered-analysis" id="layered-analysis-container">
-                    <!-- JS动态生成分层问题 -->
-                </div>
-            </section>
-
-            <!-- 模块三：首席定制化治疗方案 -->
-            <section class="report-module" id="plan-module">
-                <h2 class="module-title">首席定制化治疗方案</h2>
-                <div class="master-plan-card">
-                    <h3 class="plan-name" id="plan-name"></h3>
-                    <p class="plan-description" id="plan-description"></p>
-                    <div class="plan-core-tech">
-                        <img src="https://www.roumeiji.com/static/picture/collagen-icon1.png" alt="核心技术" class="tech-icon">
-                        <div class="tech-info">
-                            <h4>核心技术</h4>
-                            <p>YOUMAGIC™ 智感单极射频</p>
-                        </div>
+                    <!-- 相似案例佐证模块 -->
+                    <div class="report-module">
+                        <h2 class="module-title"><span>与您情况相似的真实案例</span></h2>
+                        <div id="similar-case-container"></div>
                     </div>
-                    <div class="plan-parameters">
-                        <h4>治疗参数</h4>
-                        <ul id="plan-parameters-list">
-                            <!-- JS动态生成 -->
-                        </ul>
+                    <!-- 社区反馈模块 -->
+                    <div class="report-module">
+                        <h2 class="module-title"><span>来自社区的真实反馈</span></h2>
+                        <div id="community-feedback-container"></div>
                     </div>
-                    <div class="plan-areas">
-                        <h4>重点治疗区域</h4>
-                        <div class="area-map-wrapper">
-                            <img src="" class="area-map-composite" id="area-map-composite" alt="重点治疗区域示意图">
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 模块四：效果预期与时间轴 -->
-            <section class="report-module" id="results-module">
-                <h2 class="module-title">效果预期与时间轴</h2>
-                <div class="before-after">
-                    <div class="before-after-item">
-                        <img src="" alt="治疗前" id="before-image">
-                        <span>治疗前</span>
-                    </div>
-                    <div class="arrow">→</div>
-                    <div class="before-after-item">
-                        <img src="" alt="治疗后" id="after-image">
-                        <span>预期效果</span>
-                    </div>
-                </div>
-                <div class="timeline" id="timeline-container">
-                     <!-- JS动态生成 -->
-                </div>
-            </section>
-        </main>
+                </main>
+            </div>
+        </section>
     </div>
-    <script src="demo_scripts.js?v=2.0"></script>
+
+    <!-- 信息解读弹窗 -->
+    <div id="tooltip-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h3 id="tooltip-title"></h3>
+            <div id="tooltip-body"></div>
+        </div>
+    </div>
+
+    <script src="demo_scripts.js?v=3.1"></script>
 </body>
 </html> 
