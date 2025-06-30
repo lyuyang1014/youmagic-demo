@@ -2724,148 +2724,234 @@ function getTreatmentAreaInfo(area, treatmentType) {
     };
 }
 
+// 全局状态
+let currentUserProfileId = 'profile1';
+
+// 用户档案数据
 const userProfiles = {
     'profile1': {
         name: "王女士",
         age: 28,
         skinType: "混合性偏干",
         profileDesc: "初老抗衰",
-        avatar: "face.png", // 稍后可替换
+        avatar: "1.png",
+        afterImage: "1A.png",
         analysis: {
             skinAge: 32,
-            scores: {
-                elasticity: 65,
-                moisture: 58,
-                wrinkles: 72,
-                pigmentation: 85,
-                pores: 78,
-                sensitivity: 80,
-            },
             summary: "肌肤整体处于轻度老化阶段，胶原蛋白流失加速，眼周及法令纹区域出现动态性皱纹，需即刻启动抗衰护理。",
-            regions: {
-                forehead: { issue: "抬头纹", severity: "轻度", details: "因表情习惯产生动态性抬头纹，皮层弹性下降。", recommendation: "建议通过射频提升前额紧致度。" },
-                eyes: { issue: "眼周细纹", severity: "中度", details: "眼周皮肤干燥，出现干纹和表情纹，是面部最早出现衰老的信号。", recommendation: "推荐使用眼部专用探头进行精准提拉。" },
-                cheeks: { issue: "法令纹", severity: "中度", details: "鼻唇沟加深，苹果肌有轻微下垂趋势，是面部松弛的关键指标。", recommendation: "重点加强中面部提拉，刺激胶原再生。" },
-                jawline: { issue: "轮廓清晰", severity: "优秀", details: "下颌线紧致，无明显脂肪堆积或松弛。", recommendation: "保持良好，可做预防性紧致维护。" },
-                nose: { issue: "毛孔", severity: "轻度", details: "鼻翼两侧毛孔因油脂分泌而略显粗大。", recommendation: "射频治疗可帮助收缩毛孔。" },
-                chin: { issue: "肤色均匀", severity: "良好", details: "下巴区域肤色均匀，无明显痘印或色素沉着。", recommendation: "继续保持。" }
+            coreIssues: ["眼周细纹", "法令纹", "轻度松弛"],
+            scores: {
+                epidermis: { label: "表皮层", metrics: { pigmentation: 85, pores: 78, sensitivity: 80 } },
+                dermis: { label: "真皮层", metrics: { wrinkles: 72, elasticity: 65, moisture: 58 } },
+                smas: { label: "SMAS筋膜层", metrics: { contour: 75 } }
             }
         },
         treatmentPlan: {
-            chiefPlan: {
-                name: "YOUMAGIC™ 眼周焕活与中面部提升疗程",
-                description: "针对28岁初老肌定制，精准对抗第一道细纹，重塑面部年轻结构，实现预防与治疗双重功效。",
-                coreProject: "超频炮精准提拉 (眼部+面部)",
-                parameters: {
-                    intensity: "5-7档 (温和-中效)",
-                    shots: "900发",
-                    probe: "眼部专用探头 + 面部4.0探头"
-                },
-                add_ons: "术后导入医用级胶原蛋白精华",
-                cycle: "建议3次为一个完整疗程，每次间隔30-45天。"
-            }
+            name: "YOUMAGIC™ · 初老肌精准抗衰方案",
+            description: "针对28岁肌龄特点，精准对抗第一道细纹，重塑面部年轻结构，实现预防与治疗双重功效。",
+            parameters: {
+                "治疗强度": "5-7档 (温和-中效)",
+                "建议发数": "900发",
+                "使用探头": "眼部专用探头 + 面部4.0探头"
+            },
+            areaHighlight: "areas-highlight-1.png" // 假设有对应的高亮图
         },
-        results: {
-            improvement: "78%",
-            pain: "几乎无痛",
-            recovery: "24-48小时",
-            cost: "¥12,800"
-        }
+        timeline: [
+            { milestone: "治疗后1周", effect: "<strong>即刻提升:</strong> 面部轮廓有轻微上扬感，皮肤紧实度初步改善。" },
+            { milestone: "治疗后1月", effect: "<strong>胶原新生:</strong> 皮肤质感变得更细腻、有光泽，眼周细纹开始淡化。" },
+            { milestone: "治疗后3-6月", effect: "<strong>效果巅峰:</strong> 胶原结构重塑完成，法令纹、面部松弛得到显著改善，达到最佳状态。" },
+            { milestone: "治疗后1年", effect: "<strong>稳定维持:</strong> 进入效果稳定期，建议按周期进行维养治疗以巩固效果。" }
+        ]
     },
+    // ... profile2 and profile3 data (similar structure)
     'profile2': {
         name: "李女士",
         age: 38,
         skinType: "干性",
         profileDesc: "熟龄紧致",
-        avatar: "treat.png", // 稍后可替换
+        avatar: "2.png",
+        afterImage: "2A.png",
         analysis: {
             skinAge: 45,
-            scores: {
-                elasticity: 45,
-                moisture: 42,
-                wrinkles: 55,
-                pigmentation: 68,
-                pores: 82,
-                sensitivity: 75,
-            },
             summary: "面部呈现显著的松弛和下垂迹象，胶原蛋白和弹性纤维流失严重，下颌线模糊，是典型的熟龄衰老特征。",
-            regions: {
-                forehead: { issue: "静态皱纹", severity: "中度", details: "已形成静态抬头纹，即使无表情时也清晰可见。", recommendation: "需采用更高能量进行深层射频刺激。" },
-                eyes: { issue: "眼袋与下垂", severity: "严重", details: "眼周皮肤松弛，形成眼袋和多重皱纹，眼神略显疲态。", recommendation: "眼部综合抗衰是本次治疗重点。" },
-                cheeks: { issue: "全面部松弛", severity: "严重", details: "苹果肌下移，法令纹、木偶纹三线齐现，中面部容积流失明显。", recommendation: "启动全面部SMAS筋膜层提拉。" },
-                jawline: { issue: "轮廓模糊", severity: "严重", details: "下颌缘脂肪堆积与皮肤松弛导致轮廓线消失，出现双下巴。", recommendation: "下颌缘重塑是改善面部年轻化的关键。" },
-                nose: { issue: "肤质尚可", severity: "良好", details: "鼻部皮肤状态相对较好。", recommendation: "常规维护即可。" },
-                chin: { issue: "颈纹", severity: "中度", details: "颈部出现横向纹路，皮肤松弛。", recommendation: "治疗范围需延伸至颈部。" }
+            coreIssues: ["下颌线模糊", "全面部松弛", "眼袋"],
+            scores: {
+                epidermis: { label: "表皮层", metrics: { pigmentation: 68, pores: 82, sensitivity: 75 } },
+                dermis: { label: "真皮层", metrics: { wrinkles: 55, elasticity: 45, moisture: 42 } },
+                smas: { label: "SMAS筋膜层", metrics: { contour: 40 } }
             }
         },
         treatmentPlan: {
-            chiefPlan: {
-                name: "YOUMAGIC™ 全面部轮廓重塑与深度抗衰疗程",
-                description: "为38岁熟龄肌定制的强效抗衰方案，目标是重建深层支撑结构，显著提升面部轮廓，实现视觉年龄的逆转。",
-                coreProject: "超频炮MAX深度提拉",
-                parameters: {
-                    intensity: "8-10档 (强效)",
-                    shots: "1200发 (全面部+颈部)",
-                    probe: "面部4.0探头 + 颈部专用探头"
-                },
-                add_ons: "搭配使用生物刺激剂，促进胶原再生",
-                cycle: "建议4-5次为一个完整疗程，每次间隔45-60天。"
-            }
+            name: "YOUMAGIC™ · 熟龄肌轮廓重塑方案",
+            description: "为38岁熟龄肌定制的强效抗衰方案，目标是重建深层支撑结构，显著提升面部轮廓，实现视觉年龄的逆转。",
+            parameters: {
+                "治疗强度": "8-10档 (强效)",
+                "建议发数": "1200发 (全面部+颈部)",
+                "使用探头": "面部4.0探头 + 颈部专用探头"
+            },
+            areaHighlight: "areas-highlight-2.png" // 假设有对应的高亮图
         },
-        results: {
-            improvement: "85%",
-            pain: "轻微热感",
-            recovery: "3-5天",
-            cost: "¥25,600"
-        }
+        timeline: [
+            { milestone: "治疗后1周", effect: "<strong>即刻提拉:</strong> 下颌线轮廓有肉眼可见的收紧，皮肤有紧绷感。" },
+            { milestone: "治疗后1月", effect: "<strong>质感改善:</strong> 肤色提亮，皮肤含水量提升，触感更饱满。" },
+            { milestone: "治疗后3-6月", effect: "<strong>轮廓重现:</strong> 面部松弛下垂组织得到根本性提升，下颌线清晰，重现年轻轮廓。" },
+            { milestone: "治疗后1年", effect: "<strong>效果巩固:</strong> 达到理想的稳定状态，呈现出年轻5-8岁的视觉效果。" }
+        ]
     },
     'profile3': {
         name: "张小姐",
         age: 23,
         skinType: "油性痘肌",
         profileDesc: "痘肌改善",
-        avatar: "face.png", // 稍后可替换
+        avatar: "3.png",
+        afterImage: "3A.png",
         analysis: {
             skinAge: 25,
-            scores: {
-                elasticity: 88,
-                moisture: 65,
-                wrinkles: 95,
-                pigmentation: 70,
-                pores: 50,
-                sensitivity: 60,
-            },
             summary: "皮肤年轻，但油脂分泌旺盛导致毛孔粗大和反复性痘痘，留下大量新生痘印，水油平衡和屏障修复是核心问题。",
-            regions: {
-                forehead: { issue: "闭口粉刺", severity: "中度", details: "额头区域有较多闭口粉刺，皮肤不够平滑。", recommendation: "射频治疗有助于抑制皮脂腺过度活跃。" },
-                eyes: { issue: "状态良好", severity: "优秀", details: "眼周皮肤紧致，无明显问题。", recommendation: "保持即可。" },
-                cheeks: { issue: "新生痘印", severity: "严重", details: "两颊有大量红色和褐色痘印，是炎症后色素沉着(PIH)的典型表现。", recommendation: "通过射频加速新陈代谢，淡化痘印。" },
-                jawline: { issue: "偶发性痘痘", severity: "轻度", details: "下颌缘偶有炎症性痘痘发生。", recommendation: "需注意清洁和内分泌调节。" },
-                nose: { issue: "黑头与毛孔", severity: "严重", details: "鼻头和鼻翼有明显黑头和毛孔堵塞。", recommendation: "射频热效应能帮助深层清洁和收缩毛孔。" },
-                chin: { issue: "陈旧痘印", severity: "中度", details: "下巴区域有部分颜色较深的陈旧痘印。", recommendation: "治疗需要更有耐心。" }
+            coreIssues: ["新生痘印", "毛孔粗大", "水油不平衡"],
+            scores: {
+                epidermis: { label: "表皮层", metrics: { pigmentation: 70, pores: 50, sensitivity: 60 } },
+                dermis: { label: "真皮层", metrics: { wrinkles: 95, elasticity: 88, moisture: 65 } },
+                smas: { label: "SMAS筋膜层", metrics: { contour: 90 } }
             }
         },
         treatmentPlan: {
-            chiefPlan: {
-                name: "YOUMAGIC™ 水油平衡与痘肌修复疗程",
-                description: "专为年轻油性痘肌设计，旨在调节皮脂分泌、加速痘印代谢、收缩粗大毛孔，重建健康的皮肤屏障。",
-                coreProject: "超频炮净肤模式",
-                parameters: {
-                    intensity: "4-6档 (净肤-修复)",
-                    shots: "600发",
-                    probe: "面部修复专用探头"
-                },
-                add_ons: "配合使用含有水杨酸或果酸的医用护肤品",
-                cycle: "建议每月1次，连续3-6个月，以稳定皮肤状态。"
-            }
+            name: "YOUMAGIC™ · 油性痘肌净肤修复方案",
+            description: "专为年轻油性痘肌设计，旨在调节皮脂分泌、加速痘印代谢、收缩粗大毛孔，重建健康的皮肤屏障。",
+            parameters: {
+                "治疗模式": "净肤-修复模式",
+                "建议能量": "4-6档 (低能量)",
+                "使用探头": "面部修复专用探头"
+            },
+            areaHighlight: "areas-highlight-3.png" // 假设有对应的高亮图
         },
-        results: {
-            improvement: "90% (痘肌改善率)",
-            pain: "无痛",
-            recovery: "几乎无恢复期",
-            cost: "¥6,800"
-        }
+        timeline: [
+            { milestone: "治疗后1周", effect: "<strong>油脂改善:</strong> T区油脂分泌减少，炎症性痘痘开始消退。" },
+            { milestone: "治疗后1月", effect: "<strong>痘印淡化:</strong> 新生红色痘印明显变淡，肤色更均匀，毛孔有收细迹象。" },
+            { milestone: "治疗后3-6月", effect: "<strong>肤质稳定:</strong> 皮肤水油平衡，痘痘爆发频率显著降低，肤质细腻平滑。" },
+            { milestone: "治疗后1年", effect: "<strong>屏障健康:</strong> 皮肤屏障功能恢复，呈现健康、稳定的良好状态。" }
+        ]
     }
 };
 
-let currentUserProfile = 'profile1'; // 默认加载案例一
+// 初始化函数
+document.addEventListener('DOMContentLoaded', () => {
+    buildProfileSwitcher();
+    switchProfile(currentUserProfileId);
+});
+
+// 构建顶部切换器
+function buildProfileSwitcher() {
+    const container = document.getElementById('profile-switcher-container');
+    container.innerHTML = '';
+    for (const profileId in userProfiles) {
+        const profile = userProfiles[profileId];
+        const card = document.createElement('div');
+        card.className = 'profile-switcher-card';
+        card.dataset.profileId = profileId;
+        card.innerHTML = `
+            <img src="${profile.avatar}" alt="${profile.profileDesc}" class="profile-switcher-avatar">
+            <span class="profile-switcher-desc">${profile.profileDesc}</span>
+        `;
+        card.addEventListener('click', () => switchProfile(profileId));
+        container.appendChild(card);
+    }
+}
+
+// 核心切换函数
+function switchProfile(profileId) {
+    currentUserProfileId = profileId;
+    const profile = userProfiles[profileId];
+
+    // 更新切换器激活状态
+    document.querySelectorAll('.profile-switcher-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.profileId === profileId);
+    });
+
+    // 渲染所有模块
+    renderSummaryModule(profile);
+    renderDataAnalysisModule(profile);
+    renderPlanModule(profile);
+    renderResultsModule(profile);
+}
+
+// 渲染模块一：诊断概要
+function renderSummaryModule(profile) {
+    document.getElementById('main-avatar').src = profile.avatar;
+    document.getElementById('customer-name').textContent = profile.name;
+    document.getElementById('customer-tags').textContent = `${profile.age}岁 · ${profile.skinType}`;
+    document.getElementById('summary-text').textContent = profile.analysis.summary;
+    
+    const issuesContainer = document.getElementById('core-issues-container');
+    issuesContainer.innerHTML = '';
+    profile.analysis.coreIssues.forEach(issue => {
+        issuesContainer.innerHTML += `<span class="issue-tag">${issue}</span>`;
+    });
+}
+
+// 渲染模块二：数据解析
+function renderDataAnalysisModule(profile) {
+    const ageGap = profile.analysis.skinAge - profile.age;
+    document.getElementById('real-age-new').textContent = profile.age;
+    document.getElementById('skin-age-new').textContent = profile.analysis.skinAge;
+    const ageGapEl = document.getElementById('age-gap-new');
+    ageGapEl.textContent = ageGap > 0 ? `+${ageGap}` : `${ageGap}`;
+    ageGapEl.style.color = ageGap > 0 ? '#e74c3c' : '#2ecc71';
+    ageGapEl.style.backgroundColor = ageGap > 0 ? 'rgba(231, 76, 60, 0.1)' : 'rgba(46, 204, 113, 0.1)';
+
+    const layeredContainer = document.getElementById('layered-analysis-container');
+    layeredContainer.innerHTML = '';
+    const scoreLabels = { pigmentation: '色素', pores: '毛孔', sensitivity: '敏感', wrinkles: '皱纹', elasticity: '弹性', moisture: '水分', contour: '轮廓' };
+    for (const layerKey in profile.analysis.scores) {
+        const layer = profile.analysis.scores[layerKey];
+        let metricsHTML = '';
+        for (const metricKey in layer.metrics) {
+            metricsHTML += `
+                <div class="metric-item">
+                    <div class="metric-label">${scoreLabels[metricKey]}</div>
+                    <div class="metric-value">${layer.metrics[metricKey]}</div>
+                </div>
+            `;
+        }
+        layeredContainer.innerHTML += `
+            <div class="layer-card">
+                <h3 class="layer-title">${layer.label}</h3>
+                <div class="layer-metrics">${metricsHTML}</div>
+            </div>
+        `;
+    }
+}
+
+// 渲染模块三：治疗方案
+function renderPlanModule(profile) {
+    document.getElementById('plan-name').textContent = profile.treatmentPlan.name;
+    document.getElementById('plan-description').textContent = profile.treatmentPlan.description;
+    
+    const paramsList = document.getElementById('plan-parameters-list');
+    paramsList.innerHTML = '';
+    for (const key in profile.treatmentPlan.parameters) {
+        paramsList.innerHTML += `<li><strong>${key}:</strong> ${profile.treatmentPlan.parameters[key]}</li>`;
+    }
+
+    // 直接使用合成图
+    document.getElementById('area-map-composite').src = profile.treatmentPlan.areaHighlight;
+}
+
+// 渲染模块四：效果预期
+function renderResultsModule(profile) {
+    document.getElementById('before-image').src = profile.avatar;
+    document.getElementById('after-image').src = profile.afterImage;
+
+    const timelineContainer = document.getElementById('timeline-container');
+    timelineContainer.innerHTML = '';
+    profile.timeline.forEach(item => {
+        timelineContainer.innerHTML += `
+            <div class="timeline-item">
+                <div class="timeline-milestone">${item.milestone}</div>
+                <div class="timeline-content">
+                    <p>${item.effect}</p>
+                </div>
+            </div>
+        `;
+    });
+}
