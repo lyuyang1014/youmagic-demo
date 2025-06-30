@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOUMAGIC Demo 调试工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            color: #5D3E8E;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        
+        .debug-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border-left: 4px solid #5D3E8E;
+        }
+        
+        .debug-section h2 {
+            color: #5D3E8E;
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .status {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: 600;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .test-button {
+            background: #5D3E8E;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        
+        .test-button:hover {
+            background: #4A2C75;
+        }
+        
+        .image-test {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .info-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .info-card strong {
+            color: #5D3E8E;
+            display: block;
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        
+        .log-area {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 YOUMAGIC Demo 调试工具</h1>
+        
+        <!-- 设备信息 -->
+        <div class="debug-section">
+            <h2>📱 设备信息</h2>
+            <div class="info-grid">
+                <div class="info-card">
+                    <strong id="screenSize">-</strong>
+                    <span>屏幕尺寸</span>
+                </div>
+                <div class="info-card">
+                    <strong id="deviceType">-</strong>
+                    <span>设备类型</span>
+                </div>
+                <div class="info-card">
+                    <strong id="pixelRatio">-</strong>
+                    <span>像素比</span>
+                </div>
+                <div class="info-card">
+                    <strong id="memoryInfo">-</strong>
+                    <span>内存信息</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- face.png 加载测试 -->
+        <div class="debug-section">
+            <h2>🖼️ face.png 加载测试</h2>
+            <div id="imageStatus" class="status warning">
+                等待测试...
+            </div>
+            <button class="test-button" onclick="testFaceImage()">🔍 测试 face.png 加载</button>
+            <button class="test-button" onclick="testAllPaths()">📂 测试所有路径</button>
+            
+            <div class="image-test">
+                <img id="testImage" style="max-width: 200px; max-height: 200px; border-radius: 10px; display: none;">
+            </div>
+        </div>
+        
+        <!-- 性能测试 -->
+        <div class="debug-section">
+            <h2>⚡ 性能测试</h2>
+            <div id="performanceStatus" class="status warning">
+                等待测试...
+            </div>
+            <button class="test-button" onclick="testCanvasPerformance()">🎨 Canvas 性能测试</button>
+            <button class="test-button" onclick="testMemoryUsage()">🧠 内存使用测试</button>
+        </div>
+        
+        <!-- 实时日志 -->
+        <div class="debug-section">
+            <h2>📋 实时日志</h2>
+            <button class="test-button" onclick="clearLog()">🗑️ 清空日志</button>
+            <div id="logArea" class="log-area">
+                日志将在这里显示...
+            </div>
+        </div>
+        
+        <!-- 解决方案 -->
+        <div class="debug-section">
+            <h2>💡 常见问题解决方案</h2>
+            <div style="line-height: 1.6;">
+                <p><strong>1. face.png 不显示：</strong></p>
+                <ul style="margin-left: 20px; margin-bottom: 15px;">
+                    <li>确保 face.png 文件在项目根目录</li>
+                    <li>检查文件大小，建议小于 2MB</li>
+                    <li>清除浏览器缓存后重试</li>
+                </ul>
+                
+                <p><strong>2. 移动端卡顿：</strong></p>
+                <ul style="margin-left: 20px; margin-bottom: 15px;">
+                    <li>系统已启用移动端优化模式</li>
+                    <li>定期清理内存（每30秒自动执行）</li>
+                    <li>Canvas分辨率自动降低</li>
+                </ul>
+                
+                <p><strong>3. 空白区域：</strong></p>
+                <ul style="margin-left: 20px;">
+                    <li>CSS布局已优化，移动端使用250x320尺寸</li>
+                    <li>热点位置已重新校准</li>
+                    <li>支持响应式自动调整</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let logArea = document.getElementById('logArea');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#51cf66' : '#74c0fc';
+            logArea.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+        
+        function clearLog() {
+            logArea.innerHTML = '日志已清空...';
+        }
+        
+        // 初始化设备信息
+        function initDeviceInfo() {
+            document.getElementById('screenSize').textContent = `${window.innerWidth}×${window.innerHeight}`;
+            document.getElementById('deviceType').textContent = window.innerWidth <= 768 ? '移动端' : '桌面端';
+            document.getElementById('pixelRatio').textContent = window.devicePixelRatio || 1;
+            
+            // 内存信息（如果支持）
+            if (performance.memory) {
+                const memory = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+                document.getElementById('memoryInfo').textContent = `${memory}MB`;
+            } else {
+                document.getElementById('memoryInfo').textContent = '不支持';
+            }
+        }
+        
+        // 测试 face.png 加载
+        function testFaceImage() {
+            log('开始测试 face.png 加载...', 'info');
+            const img = new Image();
+            const testImg = document.getElementById('testImage');
+            const status = document.getElementById('imageStatus');
+            
+            img.onload = function() {
+                log('✅ face.png 加载成功！', 'success');
+                status.className = 'status success';
+                status.textContent = '✅ face.png 加载成功';
+                testImg.src = img.src;
+                testImg.style.display = 'block';
+                log(`图片尺寸: ${img.naturalWidth}×${img.naturalHeight}`, 'info');
+            };
+            
+            img.onerror = function() {
+                log('❌ face.png 加载失败', 'error');
+                status.className = 'status error';
+                status.textContent = '❌ face.png 加载失败，请检查文件是否存在';
+            };
+            
+            img.src = 'face.png';
+        }
+        
+        // 测试所有可能的路径
+        function testAllPaths() {
+            const paths = [
+                'face.png',
+                './face.png',
+                '/youmagic-demo/face.png',
+                '/face.png'
+            ];
+            
+            log('测试所有可能的路径...', 'info');
+            
+            paths.forEach((path, index) => {
+                setTimeout(() => {
+                    const img = new Image();
+                    img.onload = function() {
+                        log(`✅ 路径 ${path} 加载成功`, 'success');
+                    };
+                    img.onerror = function() {
+                        log(`❌ 路径 ${path} 加载失败`, 'error');
+                    };
+                    img.src = path;
+                }, index * 1000);
+            });
+        }
+        
+        // Canvas 性能测试
+        function testCanvasPerformance() {
+            log('开始 Canvas 性能测试...', 'info');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 测试不同分辨率的渲染时间
+            const sizes = [
+                {width: 300, height: 400, name: '桌面端'},
+                {width: 250, height: 320, name: '移动端优化'}
+            ];
+            
+            sizes.forEach(size => {
+                const startTime = performance.now();
+                
+                canvas.width = size.width;
+                canvas.height = size.height;
+                
+                // 模拟绘制操作
+                for (let i = 0; i < 100; i++) {
+                    ctx.beginPath();
+                    ctx.arc(Math.random() * size.width, Math.random() * size.height, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                
+                const endTime = performance.now();
+                const duration = Math.round(endTime - startTime);
+                log(`${size.name} (${size.width}×${size.height}): ${duration}ms`, duration < 50 ? 'success' : 'error');
+            });
+            
+            document.getElementById('performanceStatus').className = 'status success';
+            document.getElementById('performanceStatus').textContent = '✅ Canvas 性能测试完成，查看日志了解详情';
+        }
+        
+        // 内存使用测试
+        function testMemoryUsage() {
+            if (!performance.memory) {
+                log('❌ 浏览器不支持内存监控', 'error');
+                return;
+            }
+            
+            log('开始内存使用测试...', 'info');
+            const memory = performance.memory;
+            
+            log(`已使用内存: ${Math.round(memory.usedJSHeapSize / 1024 / 1024)}MB`, 'info');
+            log(`内存限制: ${Math.round(memory.jsHeapSizeLimit / 1024 / 1024)}MB`, 'info');
+            log(`内存使用率: ${Math.round(memory.usedJSHeapSize / memory.jsHeapSizeLimit * 100)}%`, 'info');
+            
+            if (memory.usedJSHeapSize / memory.jsHeapSizeLimit > 0.8) {
+                log('⚠️ 内存使用率过高，建议刷新页面', 'error');
+            } else {
+                log('✅ 内存使用正常', 'success');
+            }
+        }
+        
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initDeviceInfo();
+            log('🚀 调试工具已就绪', 'success');
+            
+            // 自动检测设备类型并给出建议
+            if (window.innerWidth <= 768) {
+                log('📱 检测到移动设备，已启用性能优化模式', 'info');
+            } else {
+                log('💻 检测到桌面设备，使用完整功能模式', 'info');
+            }
+        });
+        
+        // 监听窗口大小变化
+        window.addEventListener('resize', function() {
+            initDeviceInfo();
+            log(`📐 窗口尺寸变更: ${window.innerWidth}×${window.innerHeight}`, 'info');
+        });
+    </script>
+</body>
+</html> 
