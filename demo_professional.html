@@ -306,151 +306,141 @@
         <!-- 步骤3：治疗方案 -->
         <section class="step-section" id="step-3">
             <div class="container">
-                <h2 class="section-title">个性化治疗方案</h2>
+                <h2 class="section-title">变美方案</h2>
                 
-                <div class="treatment-customizer">
-                    <div class="customizer-sidebar">
-                        <h3>参数调节</h3>
-                        
-                        <div class="parameter-group">
-                            <label>治疗强度</label>
-                            <input type="range" id="intensitySlider" min="1" max="10" value="6" class="slider">
-                            <div class="slider-labels">
-                                <span>温和</span>
-                                <span>强效</span>
-                            </div>
-                        </div>
-                        
-                        <div class="parameter-group">
-                            <label>脉冲频率</label>
-                            <input type="range" id="frequencySlider" min="1" max="5" value="3" class="slider">
-                            <div class="slider-labels">
-                                <span>低频</span>
-                                <span>高频</span>
-                            </div>
-                        </div>
-                        
-                        <div class="parameter-group">
-                            <label>治疗深度</label>
-                            <input type="range" id="depthSlider" min="1" max="3" value="2" class="slider">
-                            <div class="slider-labels">
-                                <span>浅层</span>
-                                <span>深层</span>
-                            </div>
-                        </div>
-                        
-                        <div class="treatment-areas">
-                            <h4>重点治疗区域</h4>
-                            <label class="area-checkbox">
-                                <input type="checkbox" checked>
-                                <span>下颌线提升</span>
-                            </label>
-                            <label class="area-checkbox">
-                                <input type="checkbox">
-                                <span>面颊紧致</span>
-                            </label>
-                            <label class="area-checkbox">
-                                <input type="checkbox">
-                                <span>法令纹改善</span>
-                            </label>
+                <!-- 方案分类标签 -->
+                <div class="treatment-tabs">
+                    <div class="tab-item active" data-tab="projects">项目库</div>
+                    <div class="tab-item" data-tab="equipment">仪器库</div>
+                    <div class="tab-item" data-tab="materials">材料库</div>
+                    <div class="tab-item" data-tab="drugs">药品库</div>
+                </div>
+                
+                <!-- 项目库内容 -->
+                <div class="tab-content active" id="projects-content">
+                    <!-- 人物图像和治疗区域 -->
+                    <div class="treatment-avatar-section">
+                        <div class="avatar-container">
+                            <img src="face.png" alt="面部示意图" class="treatment-avatar">
+                            
+                            <!-- 治疗标签 -->
+                            <div class="treatment-tag tag-forehead" data-area="前额">紧致</div>
+                            <div class="treatment-tag tag-eyes" data-area="眼部">抗衰</div>
+                            <div class="treatment-tag tag-cheeks" data-area="面颊">提升</div>
+                            <div class="treatment-tag tag-jawline" data-area="下颌">轮廓</div>
+                            <div class="treatment-tag tag-neck" data-area="颈部">紧实</div>
                         </div>
                     </div>
                     
-                    <div class="customizer-preview">
-                        <h3>治疗效果预览</h3>
-                        <div class="before-after-container">
-                            <div class="comparison-slider">
-                                <div class="before-image">
-                                    <img id="beforeTreatmentImg" src="face.png" alt="治疗前" style="filter: none;">
-                                    <span class="image-label">治疗前</span>
-                                </div>
-                                <div class="after-image">
-                                    <img id="afterTreatmentImg" src="treat.png" alt="治疗后" style="filter: none;">
-                                    <span class="image-label">预期效果</span>
-                                </div>
-                                <input type="range" class="comparison-control" min="0" max="100" value="50" id="comparisonSlider">
+                    <!-- 区域分类 -->
+                    <div class="area-categories">
+                        <div class="category-item active" data-category="all">全部</div>
+                        <div class="category-item" data-category="face">面部</div>
+                        <div class="category-item" data-category="eyes">眼部</div>
+                        <div class="category-item" data-category="skin">皮肤</div>
+                        <div class="category-item" data-category="contour">轮廓</div>
+                        <div class="category-item" data-category="neck">颈部</div>
+                    </div>
+                    
+                    <!-- 治疗项目列表 -->
+                    <div class="treatment-projects">
+                        <div class="project-card" data-category="skin">
+                            <div class="project-avatar">
+                                <img src="face.png" alt="紧致提升">
                             </div>
-                            
-                            <!-- 移动端专用简化预览 -->
-                            <div class="mobile-treatment-preview">
-                                <h4>治疗效果对比</h4>
-                                <div class="mobile-comparison-grid">
-                                    <div class="mobile-comparison-item">
-                                        <img src="face.png" alt="治疗前">
-                                        <span class="mobile-image-label">治疗前</span>
-                                    </div>
-                                    <div class="mobile-comparison-arrow">→</div>
-                                    <div class="mobile-comparison-item">
-                                        <img src="treat.png" alt="治疗后">
-                                        <span class="mobile-image-label">预期效果</span>
-                                    </div>
-                                </div>
-                                <div class="mobile-improvement-indicator">
-                                    <span class="mobile-improvement-label">预期改善程度</span>
-                                    <div class="mobile-improvement-bar">
-                                        <div class="mobile-improvement-fill" id="mobileImprovementFill" style="width: 75%"></div>
-                                    </div>
-                                    <span class="mobile-improvement-value" id="mobileImprovementValue">75%</span>
+                            <div class="project-info">
+                                <h3>紧致提升</h3>
+                                <div class="project-count">8个项目 ></div>
+                                <p class="project-desc">针对面部松弛、皮肤老化、轮廓模糊等问题，通过射频技术刺激胶原蛋白再生，恢复肌肤紧致弹性，重塑年轻轮廓。</p>
+                                <div class="project-tags">
+                                    <span class="tag">功效显著</span>
+                                    <span class="tag">恢复较快</span>
+                                    <span class="tag">效果持久</span>
+                                    <span class="tag">项目对比</span>
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="effect-metrics">
-                            <div class="metric">
-                                <span class="metric-label">预期改善程度</span>
-                                <span class="metric-value" id="improvementRate">75%</span>
+                        <div class="project-card" data-category="eyes">
+                            <div class="project-avatar">
+                                <img src="face.png" alt="眼部抗衰">
                             </div>
-                            <div class="metric">
-                                <span class="metric-label">疼痛程度</span>
-                                <span class="metric-value" id="painLevel">轻微</span>
+                            <div class="project-info">
+                                <h3>眼部抗衰</h3>
+                                <div class="project-count">6个项目 ></div>
+                                <p class="project-desc">专注眼周细纹、鱼尾纹、眼袋、黑眼圈等问题。采用精准温控技术，温和改善眼部肌肤状态，重现明亮双眸。</p>
+                                <div class="project-tags">
+                                    <span class="tag">精准温控</span>
+                                    <span class="tag">温和安全</span>
+                                    <span class="tag">效果明显</span>
+                                    <span class="tag">项目对比</span>
+                                </div>
                             </div>
-                            <div class="metric">
-                                <span class="metric-label">恢复时间</span>
-                                <span class="metric-value" id="recoveryTime">2-3天</span>
+                        </div>
+                        
+                        <div class="project-card" data-category="contour">
+                            <div class="project-avatar">
+                                <img src="treat.png" alt="轮廓重塑">
                             </div>
-                            <div class="metric">
-                                <span class="metric-label">预估费用</span>
-                                <span class="metric-value" id="estimatedCost">¥8,800</span>
+                            <div class="project-info">
+                                <h3>轮廓重塑</h3>
+                                <div class="project-count">5个项目 ></div>
+                                <p class="project-desc">针对下颌线模糊、双下巴、面部轮廓不清晰等问题，通过深层射频技术重塑面部立体轮廓。</p>
+                                <div class="project-tags">
+                                    <span class="tag">深层作用</span>
+                                    <span class="tag">轮廓清晰</span>
+                                    <span class="tag">立体提升</span>
+                                    <span class="tag">项目对比</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="project-card" data-category="skin">
+                            <div class="project-avatar">
+                                <img src="face.png" alt="肌肤焕新">
+                            </div>
+                            <div class="project-info">
+                                <h3>肌肤焕新</h3>
+                                <div class="project-count">10个项目 ></div>
+                                <p class="project-desc">改善肌肤质地、毛孔粗大、暗沉等问题，促进细胞新陈代谢，恢复肌肤健康光泽状态。</p>
+                                <div class="project-tags">
+                                    <span class="tag">质地改善</span>
+                                    <span class="tag">毛孔细致</span>
+                                    <span class="tag">光泽透亮</span>
+                                    <span class="tag">项目对比</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="treatment-plans">
-                    <h3>推荐治疗方案</h3>
-                    <div class="plans-grid">
-                        <div class="plan-card recommended">
-                            <div class="plan-badge">推荐</div>
-                            <h4>标准提升方案</h4>
-                            <div class="plan-params">
-                                <span>强度: 中等</span>
-                                <span>发数: 900发</span>
-                                <span>时长: 45分钟</span>
-                            </div>
-                            <div class="plan-price">¥8,800</div>
-                            <p>适合初次体验，平衡效果与舒适度</p>
+                <!-- 仪器库内容 -->
+                <div class="tab-content" id="equipment-content">
+                    <div class="equipment-grid">
+                        <div class="equipment-card">
+                            <img src="treat.png" alt="YOUMAGIC射频设备">
+                            <h3>YOUMAGIC单极射频</h3>
+                            <p>专业医美级设备，精准温控技术</p>
                         </div>
-                        
-                        <div class="plan-card">
-                            <h4>温和舒适方案</h4>
-                            <div class="plan-params">
-                                <span>强度: 低等</span>
-                                <span>发数: 1200发</span>
-                                <span>时长: 60分钟</span>
-                            </div>
-                            <div class="plan-price">¥7,200</div>
-                            <p>敏感肌适用，温和改善无负担</p>
+                    </div>
+                </div>
+                
+                <!-- 材料库内容 -->
+                <div class="tab-content" id="materials-content">
+                    <div class="materials-grid">
+                        <div class="material-card">
+                            <h3>专业凝胶</h3>
+                            <p>导电凝胶，确保治疗效果</p>
                         </div>
-                        
-                        <div class="plan-card">
-                            <h4>高效强化方案</h4>
-                            <div class="plan-params">
-                                <span>强度: 高等</span>
-                                <span>发数: 600发</span>
-                                <span>时长: 30分钟</span>
-                            </div>
-                            <div class="plan-price">¥12,800</div>
-                            <p>追求显著效果，适合有经验者</p>
+                    </div>
+                </div>
+                
+                <!-- 药品库内容 -->
+                <div class="tab-content" id="drugs-content">
+                    <div class="drugs-grid">
+                        <div class="drug-card">
+                            <h3>修复精华</h3>
+                            <p>治疗后修复护理产品</p>
                         </div>
                     </div>
                 </div>

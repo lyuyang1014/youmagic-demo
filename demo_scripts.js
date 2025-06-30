@@ -302,6 +302,9 @@ function goToStep(step) {
             startFaceAnalysis();
             break;
         case 3:
+            // 使用新的变美方案初始化函数
+            initializeTreatmentPlan();
+            // 保持原有的治疗定制器功能
             setupTreatmentCustomizer();
             initializeTreatmentPreview();
             break;
@@ -2452,3 +2455,238 @@ window.nextStep = nextStep;
 window.generateReport = generateReport;
 window.bookConsultation = bookConsultation;
 window.togglePanel = togglePanel; 
+
+// 变美方案初始化
+function initializeTreatmentPlan() {
+    setupTreatmentTabs();
+    setupCategoryFilters();
+    setupProjectCards();
+    initializeTreatmentAvatar();
+}
+
+// 设置治疗方案标签页
+function setupTreatmentTabs() {
+    const tabItems = document.querySelectorAll('.tab-item');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    tabItems.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+            
+            // 移除所有活动状态
+            tabItems.forEach(t => t.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            // 激活当前标签
+            this.classList.add('active');
+            const targetContent = document.getElementById(`${targetTab}-content`);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+            
+            // 添加切换动画
+            this.classList.add('slide-up');
+            setTimeout(() => {
+                this.classList.remove('slide-up');
+            }, 300);
+        });
+    });
+}
+
+// 设置区域分类筛选
+function setupCategoryFilters() {
+    const categoryItems = document.querySelectorAll('.category-item');
+    const projectCards = document.querySelectorAll('.project-card');
+    
+    categoryItems.forEach(category => {
+        category.addEventListener('click', function() {
+            const targetCategory = this.getAttribute('data-category');
+            
+            // 移除所有活动状态
+            categoryItems.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            
+            // 筛选项目卡片
+            projectCards.forEach(card => {
+                const cardCategory = card.getAttribute('data-category');
+                
+                if (targetCategory === 'all' || cardCategory === targetCategory) {
+                    card.style.display = 'flex';
+                    card.classList.add('fade-in');
+                } else {
+                    card.style.display = 'none';
+                    card.classList.remove('fade-in');
+                }
+            });
+        });
+    });
+}
+
+// 设置项目卡片交互
+function setupProjectCards() {
+    const projectCards = document.querySelectorAll('.project-card');
+    
+    projectCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const projectName = this.querySelector('h3').textContent;
+            const projectDesc = this.querySelector('.project-desc').textContent;
+            
+            // 添加点击动画
+            this.classList.add('bounce-in');
+            setTimeout(() => {
+                this.classList.remove('bounce-in');
+            }, 600);
+            
+            // 显示项目详情
+            console.log(`选择项目: ${projectName}`);
+            console.log(`项目描述: ${projectDesc}`);
+        });
+        
+        // 添加鼠标悬停效果
+        card.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-2px)';
+        });
+        
+        card.addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0)';
+        });
+    });
+}
+
+// 初始化治疗头像区域
+function initializeTreatmentAvatar() {
+    const treatmentTags = document.querySelectorAll('.treatment-tag');
+    
+    treatmentTags.forEach(tag => {
+        tag.addEventListener('click', function() {
+            const area = this.getAttribute('data-area');
+            const treatmentType = this.textContent;
+            
+            // 添加点击动画
+            this.classList.add('bounce-in');
+            setTimeout(() => {
+                this.classList.remove('bounce-in');
+            }, 600);
+            
+            // 显示对应区域的治疗信息
+            showTreatmentAreaInfo(area, treatmentType);
+        });
+        
+        // 添加脉冲动画
+        tag.addEventListener('mouseenter', function() {
+            this.style.animation = 'pulse 1s infinite';
+        });
+        
+        tag.addEventListener('mouseleave', function() {
+            this.style.animation = 'none';
+        });
+    });
+}
+
+// 显示治疗区域信息
+function showTreatmentAreaInfo(area, treatmentType) {
+    const treatmentInfo = getTreatmentAreaInfo(area, treatmentType);
+    
+    // 创建信息提示框
+    const infoBox = document.createElement('div');
+    infoBox.className = 'treatment-info-box';
+    infoBox.innerHTML = `
+        <div class="info-header">
+            <h4>${area} - ${treatmentType}</h4>
+            <button class="info-close">&times;</button>
+        </div>
+        <div class="info-content">
+            <p><strong>适应症：</strong>${treatmentInfo.indications}</p>
+            <p><strong>治疗方案：</strong>${treatmentInfo.treatment}</p>
+            <p><strong>预期效果：</strong>${treatmentInfo.effect}</p>
+            <p><strong>治疗周期：</strong>${treatmentInfo.cycle}</p>
+        </div>
+    `;
+    
+    // 添加样式
+    infoBox.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 8px 25px rgba(93, 62, 142, 0.2);
+        z-index: 1000;
+        max-width: 400px;
+        width: 90%;
+        animation: fadeIn 0.3s ease;
+    `;
+    
+    // 添加背景遮罩
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+    `;
+    
+    document.body.appendChild(overlay);
+    document.body.appendChild(infoBox);
+    
+    // 关闭按钮事件
+    const closeBtn = infoBox.querySelector('.info-close');
+    closeBtn.addEventListener('click', () => {
+        document.body.removeChild(infoBox);
+        document.body.removeChild(overlay);
+    });
+    
+    // 点击遮罩关闭
+    overlay.addEventListener('click', () => {
+        document.body.removeChild(infoBox);
+        document.body.removeChild(overlay);
+    });
+}
+
+// 获取治疗区域信息
+function getTreatmentAreaInfo(area, treatmentType) {
+    const treatmentData = {
+        '前额': {
+            indications: '额纹、川字纹、抬头纹',
+            treatment: 'YOUMAGIC射频紧致，针对前额肌肉放松',
+            effect: '减少抬头纹，提升前额平滑度',
+            cycle: '1-2次，间隔4-6周'
+        },
+        '眼部': {
+            indications: '眼周细纹、鱼尾纹、眼袋下垂',
+            treatment: '精准温控射频，温和改善眼周肌肤',
+            effect: '减少细纹，提升眼部紧致度',
+            cycle: '2-3次，间隔3-4周'
+        },
+        '面颊': {
+            indications: '面部松弛、苹果肌下垂、法令纹',
+            treatment: '深层射频技术，刺激胶原蛋白再生',
+            effect: '提升面部轮廓，改善松弛状态',
+            cycle: '2-3次，间隔4-6周'
+        },
+        '下颌': {
+            indications: '双下巴、下颌线模糊、颈纹',
+            treatment: '射频塑形，重新定义下颌轮廓',
+            effect: '明显改善下颌线条，减少双下巴',
+            cycle: '3-4次，间隔4-6周'
+        },
+        '颈部': {
+            indications: '颈纹、颈部松弛、火鸡脖',
+            treatment: '颈部专用射频程序，分层治疗',
+            effect: '紧致颈部肌肤，减少颈纹',
+            cycle: '2-3次，间隔4-6周'
+        }
+    };
+    
+    return treatmentData[area] || {
+        indications: '多种肌肤问题',
+        treatment: 'YOUMAGIC专业射频治疗',
+        effect: '改善肌肤状态，提升紧致度',
+        cycle: '根据个人情况定制'
+    };
+}

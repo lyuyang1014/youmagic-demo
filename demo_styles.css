@@ -2072,7 +2072,6 @@ body {
         display: none !important;
     }
 }
-}
 
 @media (max-width: 480px) {
     .section-title {
@@ -2170,5 +2169,334 @@ body {
     }
     100% {
         left: 100%;
+    }
+}
+
+/* 变美方案样式 */
+.treatment-tabs {
+    display: flex;
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 4px;
+    margin: 20px 0;
+    overflow-x: auto;
+}
+
+.tab-item {
+    flex: 1;
+    text-align: center;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #666;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.tab-item.active {
+    background: var(--primary-color);
+    color: white;
+    box-shadow: 0 2px 8px rgba(93, 62, 142, 0.3);
+}
+
+.tab-item:hover:not(.active) {
+    background: rgba(93, 62, 142, 0.1);
+    color: var(--primary-color);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* 头像和治疗区域 */
+.treatment-avatar-section {
+    margin: 30px 0;
+    text-align: center;
+}
+
+.avatar-container {
+    position: relative;
+    display: inline-block;
+    margin: 0 auto;
+}
+
+.treatment-avatar {
+    width: 200px;
+    height: 250px;
+    object-fit: cover;
+    border-radius: 15px;
+    box-shadow: 0 8px 25px rgba(93, 62, 142, 0.2);
+}
+
+.treatment-tag {
+    position: absolute;
+    background: linear-gradient(135deg, var(--primary-color), #7f3f98);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 15px;
+    font-size: 0.8em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(93, 62, 142, 0.3);
+}
+
+.treatment-tag:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(93, 62, 142, 0.4);
+}
+
+.tag-forehead {
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.tag-eyes {
+    top: 60px;
+    right: -10px;
+}
+
+.tag-cheeks {
+    top: 120px;
+    left: -10px;
+}
+
+.tag-jawline {
+    bottom: 60px;
+    right: -10px;
+}
+
+.tag-neck {
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* 区域分类 */
+.area-categories {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 25px 0;
+    flex-wrap: wrap;
+}
+
+.category-item {
+    padding: 8px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #666;
+    font-weight: 500;
+    border: 2px solid #e0e0e0;
+    background: white;
+}
+
+.category-item.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.category-item:hover:not(.active) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+/* 治疗项目列表 */
+.treatment-projects {
+    margin-top: 30px;
+}
+
+.project-card {
+    display: flex;
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 15px rgba(93, 62, 142, 0.1);
+    border: 1px solid #f0f0f0;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.project-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(93, 62, 142, 0.15);
+    border-color: var(--primary-color);
+}
+
+.project-avatar {
+    flex-shrink: 0;
+    margin-right: 15px;
+}
+
+.project-avatar img {
+    width: 60px;
+    height: 60px;
+    border-radius: 12px;
+    object-fit: cover;
+    border: 2px solid #f0f0f0;
+}
+
+.project-info {
+    flex: 1;
+}
+
+.project-info h3 {
+    margin: 0 0 5px 0;
+    color: #333;
+    font-size: 1.2em;
+    font-weight: 600;
+}
+
+.project-count {
+    color: var(--primary-color);
+    font-size: 0.9em;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+.project-desc {
+    color: #666;
+    font-size: 0.9em;
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.project-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.project-tags .tag {
+    background: rgba(93, 62, 142, 0.1);
+    color: var(--primary-color);
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 0.75em;
+    font-weight: 500;
+}
+
+/* 其他标签页内容 */
+.equipment-grid, .materials-grid, .drugs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.equipment-card, .material-card, .drug-card {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(93, 62, 142, 0.1);
+    border: 1px solid #f0f0f0;
+    transition: all 0.3s ease;
+}
+
+.equipment-card:hover, .material-card:hover, .drug-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(93, 62, 142, 0.15);
+}
+
+.equipment-card img {
+    width: 80px;
+    height: 80px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    object-fit: cover;
+}
+
+.equipment-card h3, .material-card h3, .drug-card h3 {
+    color: var(--primary-color);
+    margin-bottom: 10px;
+    font-size: 1.2em;
+}
+
+.equipment-card p, .material-card p, .drug-card p {
+    color: #666;
+    line-height: 1.5;
+}
+
+/* 变美方案移动端适配 */
+@media (max-width: 768px) {
+    .treatment-avatar {
+        width: 160px;
+        height: 200px;
+    }
+    
+    .treatment-tag {
+        font-size: 0.7em;
+        padding: 4px 8px;
+    }
+    
+    .tag-eyes, .tag-jawline {
+        right: -5px;
+    }
+    
+    .tag-cheeks {
+        left: -5px;
+    }
+    
+    .area-categories {
+        gap: 8px;
+    }
+    
+    .category-item {
+        padding: 6px 12px;
+        font-size: 0.9em;
+    }
+    
+    .project-card {
+        padding: 15px;
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .project-avatar {
+        margin: 0 auto 15px auto;
+    }
+    
+    .project-avatar img {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .project-tags {
+        justify-content: center;
+    }
+    
+    .equipment-grid, .materials-grid, .drugs-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .treatment-tabs {
+        padding: 2px;
+    }
+    
+    .tab-item {
+        padding: 10px 12px;
+        font-size: 0.9em;
+    }
+    
+    .treatment-avatar {
+        width: 140px;
+        height: 180px;
+    }
+    
+    .treatment-tag {
+        font-size: 0.65em;
+        padding: 3px 6px;
     }
 } 
