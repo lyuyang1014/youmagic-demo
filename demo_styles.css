@@ -98,7 +98,7 @@ body {
 .report-header { padding: 15px 20px; background: var(--card-background); text-align: center; border-bottom: 1px solid var(--light-grey); position: sticky; top: 0; z-index: 10;}
 #report-title { font-size: 18px; color: var(--primary-color); }
 #back-to-form { background: none; border: none; color: var(--accent-color); font-size: 14px; cursor: pointer; position: absolute; left: 20px; top: 50%; transform: translateY(-50%);}
-.report-content { padding: 20px; background-color: var(--background-color); }
+.report-content { padding: 20px; background-color: var(--background-color); padding-top: 0; }
 .report-module { margin-bottom: 20px; background: var(--card-background); padding: 20px; border-radius: var(--border-radius); box-shadow: var(--shadow); }
 .module-title {
     font-size: 20px;
@@ -118,6 +118,82 @@ body {
     left: 0;
     top: 50%;
     z-index: 0;
+}
+
+/* 数据解读 (新样式) */
+.interpretation-card {
+    background-color: #fff;
+    border: 1px solid var(--light-grey);
+    border-radius: var(--border-radius);
+    margin-bottom: 20px;
+    padding: 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.interpretation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.interpretation-header h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin: 0;
+}
+.interpretation-score {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent-color);
+}
+.interpretation-body {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--light-grey);
+}
+.interpretation-body p {
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 5px 0;
+    color: var(--text-color);
+}
+.interpretation-body strong {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+.interpretation-visualizer {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    background-color: var(--light-grey);
+    border-radius: 4px;
+    margin: 15px 0;
+}
+.normal-range-bar {
+    position: absolute;
+    height: 100%;
+    background-color: #2ecc71; /* 绿色代表正常 */
+    opacity: 0.5;
+    border-radius: 4px;
+}
+.user-score-indicator {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    background-color: var(--accent-color);
+    border: 2px solid white;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 2;
+}
+.range-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #999;
+    margin-top: 8px;
 }
 
 /* 数据解读 */
@@ -147,11 +223,43 @@ body {
     margin-left: 15px;
 }
 
-/* 首席方案 */
-#master-plan-container h3 { font-size: 18px; margin-bottom: 10px; font-weight: 600; }
-#master-plan-container p { margin-bottom: 20px; }
-#master-plan-container ul { list-style: none; padding-left: 0; }
-#master-plan-container li { background: rgba(142, 68, 173, 0.05); padding: 10px; border-radius: 8px; margin-bottom: 8px; }
+/* 首席方案 (新样式) */
+.plan-section {
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--light-grey);
+}
+.plan-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.plan-section h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+}
+.plan-section h4::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 16px;
+    background-color: var(--accent-color);
+    margin-right: 8px;
+    border-radius: 2px;
+}
+.plan-section ul {
+    list-style: none;
+    padding-left: 15px;
+}
+.plan-section li, .plan-section p {
+    font-size: 14px;
+    color: var(--text-color);
+    line-height: 1.6;
+    margin-bottom: 8px;
+}
 
 /* 相似案例 */
 .case-card { text-align: center; }
@@ -160,15 +268,40 @@ body {
 .before-after-img img { width: 48%; border-radius: var(--border-radius); }
 .case-card p { font-size: 14px; margin-top: 15px; background: var(--background-color); padding: 10px; border-radius: 8px; }
 
-/* 社区反馈 */
-#community-feedback-container { display: grid; gap: 15px; }
-.feedback-card { display: flex; gap: 15px; }
-.feedback-avatar { width: 40px; height: 40px; border-radius: 50%; }
-.feedback-content h5 { font-size: 14px; font-weight: 600; margin: 0; }
-.feedback-content p { font-size: 14px; margin: 5px 0 0; }
-.feedback-photos { display: flex; gap: 5px; margin-top: 10px; }
-.feedback-photos img { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; }
-
+/* 社区反馈 (新样式) */
+#community-feedback-container {
+    display: grid;
+    gap: 20px;
+}
+.feedback-card {
+    background-color: var(--background-color);
+    padding: 15px;
+    border-radius: var(--border-radius);
+}
+.feedback-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.feedback-platform-logo {
+    width: 20px;
+    height: 20px;
+}
+.feedback-user {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+.feedback-text {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-color);
+}
+.feedback-text strong {
+    color: var(--accent-color);
+    font-weight: 600; /* 保持加粗 */
+}
 
 /* 弹窗 */
 .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); animation: fadeIn 0.3s; }
@@ -186,6 +319,63 @@ body {
 #tooltip-title { font-size: 18px; color: var(--primary-color); margin-bottom: 15px; }
 #tooltip-body p { margin-bottom: 10px; }
 #tooltip-body strong { color: var(--accent-color); }
+
+/* 首席方案模块设备图 */
+.tech-showcase {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background-color: var(--background-color);
+    padding: 15px;
+    border-radius: var(--border-radius);
+    margin-bottom: 20px;
+}
+.equipment-img {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+}
+.tech-desc h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 5px 0;
+}
+.tech-desc p {
+    font-size: 14px;
+    color: var(--text-color);
+    margin: 0;
+}
+
+/* 新增：视觉诊断模块 */
+#visual-diagnosis-module {
+    padding: 20px;
+    background-color: var(--card-background); /* 与其他模块一致 */
+}
+.visual-diagnosis-wrapper {
+    width: 100%;
+    max-width: 300px; /* 控制最大宽度 */
+    margin: 0 auto;
+    border-radius: var(--border-radius);
+    overflow: hidden; /* 确保图片圆角 */
+    box-shadow: var(--shadow);
+    margin-bottom: 15px; /* Add margin to separate from text */
+}
+.visual-summary-text {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-color);
+    text-align: left;
+    background-color: var(--background-color);
+    padding: 15px;
+    border-radius: 8px;
+}
+.visual-summary-text strong {
+    color: var(--accent-color);
+}
+#visual-diagnosis-image {
+    width: 100%;
+    display: block; /* 移除图片底部空隙 */
+}
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes spin { 100% { transform: rotate(360deg); } } 

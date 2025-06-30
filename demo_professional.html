@@ -12,7 +12,7 @@
         <section id="step-1" class="app-step active">
             <div class="container">
                 <header class="step-header">
-                    <img src="logo.png" alt="YOUMAGIC Logo" class="logo">
+                    <img src="youmagiclogo.png" alt="YOUMAGIC Logo" class="logo">
                     <h2>开启您的专属肌肤诊断</h2>
                     <p>仅需2个问题，即可生成为您量身定制的专业报告</p>
                 </header>
@@ -54,16 +54,37 @@
                     <h1 id="report-title"></h1>
                     <button id="back-to-form">重新诊断</button>
                 </header>
+                
+                <!-- 新增：视觉诊断模块 -->
+                <div id="visual-diagnosis-module" class="report-module">
+                     <h2 class="module-title"><span>整体问题区域评估</span></h2>
+                     <div class="visual-diagnosis-wrapper">
+                        <img src="" id="visual-diagnosis-image" alt="视觉诊断图">
+                     </div>
+                     <p class="visual-summary-text" id="visual-summary-text"></p>
+                </div>
+
                 <main class="report-content">
                     <!-- 数据解读模块 -->
                     <div class="report-module">
                         <h2 class="module-title"><span>数据解读</span></h2>
-                        <div id="data-interpretation-container"></div>
+                        <div id="data-interpretation-container">
+                            <!-- JS will populate this with new structure -->
+                        </div>
                     </div>
                     <!-- 首席方案模块 -->
                     <div class="report-module">
                         <h2 class="module-title"><span>首席定制化治疗方案</span></h2>
-                        <div id="master-plan-container"></div>
+                        <div id="master-plan-container">
+                            <div class="tech-showcase">
+                                <img src="equipment.webp" alt="YOUMAGIC 设备" class="equipment-img">
+                                <div class="tech-desc">
+                                    <h4>核心技术</h4>
+                                    <p>YOUMAGIC™ 智感单极射频</p>
+                                </div>
+                            </div>
+                            <!-- JS will populate the rest -->
+                        </div>
                     </div>
                     <!-- 相似案例佐证模块 -->
                     <div class="report-module">
