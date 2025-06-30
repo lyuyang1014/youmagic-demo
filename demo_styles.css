@@ -270,6 +270,11 @@ body {
     max-width: 250px;
     margin: 0 auto;
 }
+.area-map-composite {
+    width: 100%;
+    display: block;
+    border-radius: var(--border-radius);
+}
 .area-map-base, .area-map-highlight {
     width: 100%;
     display: block;
