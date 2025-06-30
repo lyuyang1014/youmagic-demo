@@ -70,10 +70,28 @@ let performanceOptimization = {
         document.addEventListener('touchstart', function() {}, { passive: true });
         document.addEventListener('touchmove', function() {}, { passive: true });
         
-        // 减少Chart.js的动画时间
+        // Chart.js移动端优化配置
         if (window.Chart) {
-            Chart.defaults.animation.duration = 500;
+            Chart.defaults.animation.duration = 300;
+            Chart.defaults.responsive = true;
+            Chart.defaults.maintainAspectRatio = false;
+            Chart.defaults.interaction.intersect = false;
+            Chart.defaults.plugins.legend.display = false; // 移动端隐藏图例节省空间
+            console.log('📊 Chart.js移动端优化已启用');
         }
+        
+        // 预设移动端Canvas优化
+        const style = document.createElement('style');
+        style.textContent = `
+            @media (max-width: 768px) {
+                canvas {
+                    image-rendering: pixelated;
+                    image-rendering: -moz-crisp-edges;
+                    image-rendering: crisp-edges;
+                }
+            }
+        `;
+        document.head.appendChild(style);
     },
     
     // 开始内存监控
@@ -106,6 +124,18 @@ let performanceOptimization = {
                     img.src = '';
                 }
             });
+            
+            // 移动端专门清理Chart.js实例（如果误创建了）
+            if (this.isMobile && window.Chart) {
+                // 销毁可能存在的图表实例
+                Object.keys(Chart.instances).forEach(id => {
+                    const chart = Chart.instances[id];
+                    if (chart && chart.canvas && !chart.canvas.offsetParent) {
+                        chart.destroy();
+                        console.log('🧹 清理未使用的Chart实例:', id);
+                    }
+                });
+            }
             
             console.log('🧹 执行内存清理');
         } catch (error) {
@@ -1292,11 +1322,21 @@ function getMetricName(metric) {
     return names[metric] || metric;
 }
 
-// 雷达图初始化
+// 雷达图初始化（仅桌面端）
 function initializeRadarChart() {
-    const ctx = document.getElementById('radarChart').getContext('2d');
+    // 移动端跳过雷达图初始化，节省内存
+    if (window.innerWidth <= 768) {
+        console.log('📱 移动端：跳过雷达图，使用轻量级替代方案');
+        initializeMobileSkinScores();
+        return;
+    }
     
-    new Chart(ctx, {
+    const ctx = document.getElementById('radarChart');
+    if (!ctx) return;
+    
+    console.log('💻 桌面端：初始化雷达图');
+    
+    new Chart(ctx.getContext('2d'), {
         type: 'radar',
         data: {
             labels: ['弹性', '水分', '紧致', '均匀', '光泽', '细腻'],
@@ -1376,6 +1416,66 @@ function initializeRadarChart() {
             }
         }
     });
+}
+
+// 移动端皮肤指数初始化（轻量级替代方案）
+function initializeMobileSkinScores() {
+    console.log('📱 移动端：初始化轻量级皮肤指数显示');
+    
+    const scores = [
+        { label: '弹性', value: 68 },
+        { label: '水分', value: 45 },
+        { label: '紧致', value: 62 },
+        { label: '均匀', value: 78 },
+        { label: '光泽', value: 55 },
+        { label: '细腻', value: 72 }
+    ];
+    
+    // 添加动画效果
+    setTimeout(() => {
+        const scoreItems = document.querySelectorAll('.mobile-score-item');
+        scoreItems.forEach((item, index) => {
+            // 延迟动画，营造加载效果
+            setTimeout(() => {
+                const fill = item.querySelector('.mobile-score-fill');
+                const value = item.querySelector('.mobile-score-value');
+                
+                if (fill && value) {
+                    // 从0开始动画到目标值
+                    const targetWidth = parseInt(fill.style.width);
+                    let currentWidth = 0;
+                    const increment = targetWidth / 20;
+                    
+                    const animateProgress = () => {
+                        currentWidth += increment;
+                        if (currentWidth >= targetWidth) {
+                            currentWidth = targetWidth;
+                            fill.style.width = currentWidth + '%';
+                            value.style.transform = 'scale(1.1)';
+                            setTimeout(() => {
+                                value.style.transform = 'scale(1)';
+                            }, 200);
+                        } else {
+                            fill.style.width = currentWidth + '%';
+                            requestAnimationFrame(animateProgress);
+                        }
+                    };
+                    
+                    animateProgress();
+                }
+                
+                // 添加入场动画
+                item.style.opacity = '0';
+                item.style.transform = 'translateY(20px)';
+                item.style.transition = 'all 0.5s ease';
+                setTimeout(() => {
+                    item.style.opacity = '1';
+                    item.style.transform = 'translateY(0)';
+                }, 50);
+                
+            }, index * 100);
+        });
+    }, 500);
 }
 
 // 年龄显示更新

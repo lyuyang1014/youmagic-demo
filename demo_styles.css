@@ -1381,7 +1381,16 @@ body {
     
     .two-column {
         grid-template-columns: 1fr;
-        gap: 20px;
+        gap: 15px;
+    }
+    
+    /* 移动端列布局优化 - 减少空白 */
+    .column {
+        margin-bottom: 0;
+    }
+    
+    .column:last-child {
+        margin-bottom: 0;
     }
     
     /* 照片上传区域移动端优化 */
@@ -1549,18 +1558,79 @@ body {
         font-size: 13px;
     }
     
-    /* 图表容器优化 */
+    /* 图表容器优化 - 移动端雷达图替代方案 */
     .chart-container {
-        padding: 20px;
+        padding: 15px;
+        /* 移动端隐藏雷达图，节省内存 */
+        display: none;
     }
     
     .chart-container h3 {
         font-size: 16px;
     }
     
+    /* 移动端简化皮肤指数显示 */
+    .mobile-skin-scores {
+        display: block;
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: var(--shadow);
+        margin-bottom: 20px;
+    }
+    
+    .mobile-skin-scores h3 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 15px;
+        text-align: center;
+    }
+    
+    .mobile-scores-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    
+    .mobile-score-item {
+        background: var(--light-grey);
+        padding: 12px;
+        border-radius: 10px;
+        text-align: center;
+    }
+    
+    .mobile-score-label {
+        font-size: 13px;
+        color: var(--medium-grey);
+        margin-bottom: 5px;
+    }
+    
+    .mobile-score-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--primary-color);
+    }
+    
+    .mobile-score-bar {
+        height: 4px;
+        background: var(--light-grey);
+        border-radius: 2px;
+        overflow: hidden;
+        margin-top: 8px;
+    }
+    
+    .mobile-score-fill {
+        height: 100%;
+        background: var(--primary-color);
+        border-radius: 2px;
+        transition: width 0.5s ease;
+    }
+    
     /* 年龄分析优化 */
     .age-analysis {
-        padding: 20px;
+        padding: 15px;
+        margin-bottom: 15px;
     }
     
     .age-comparison {
@@ -1892,6 +1962,15 @@ body {
     
     .mobile-data-trigger,
     .mobile-data-modal {
+        display: none !important;
+    }
+    
+    /* 桌面端显示雷达图，隐藏移动端简化版 */
+    .chart-container {
+        display: block !important;
+    }
+    
+    .mobile-skin-scores {
         display: none !important;
     }
 }
