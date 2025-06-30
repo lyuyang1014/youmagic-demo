@@ -1697,6 +1697,7 @@ body {
     /* 对比滑块优化 */
     .comparison-slider {
         height: 250px;
+        display: none; /* 移动端隐藏复杂滑块 */
     }
     
     .before-image img,
@@ -1706,6 +1707,94 @@ body {
     
     .comparison-control {
         width: 150px;
+    }
+    
+    /* 移动端治疗效果预览 */
+    .mobile-treatment-preview {
+        display: block;
+        background: white;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: var(--shadow);
+        margin-bottom: 20px;
+    }
+    
+    .mobile-treatment-preview h4 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 15px;
+        text-align: center;
+    }
+    
+    .mobile-comparison-grid {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 15px;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    
+    .mobile-comparison-item {
+        text-align: center;
+    }
+    
+    .mobile-comparison-item img {
+        width: 100%;
+        max-width: 120px;
+        height: 150px;
+        object-fit: cover;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    .mobile-image-label {
+        display: block;
+        font-size: 12px;
+        color: var(--medium-grey);
+        margin-top: 8px;
+        font-weight: 500;
+    }
+    
+    .mobile-comparison-arrow {
+        font-size: 24px;
+        color: var(--primary-color);
+        font-weight: bold;
+        text-align: center;
+    }
+    
+    .mobile-improvement-indicator {
+        text-align: center;
+    }
+    
+    .mobile-improvement-label {
+        display: block;
+        font-size: 13px;
+        color: var(--medium-grey);
+        margin-bottom: 8px;
+    }
+    
+    .mobile-improvement-bar {
+        height: 8px;
+        background: var(--light-grey);
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 8px 0;
+    }
+    
+    .mobile-improvement-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #4CAF50, #8BC34A);
+        border-radius: 4px;
+        transition: width 0.8s ease;
+    }
+    
+    .mobile-improvement-value {
+        display: block;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--primary-color);
+        margin-top: 5px;
     }
     
     .effect-metrics {
@@ -1971,6 +2060,15 @@ body {
     }
     
     .mobile-skin-scores {
+        display: none !important;
+    }
+    
+    /* 桌面端显示复杂滑块，隐藏移动端预览 */
+    .comparison-slider {
+        display: block !important;
+    }
+    
+    .mobile-treatment-preview {
         display: none !important;
     }
 }

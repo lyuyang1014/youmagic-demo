@@ -303,6 +303,7 @@ function goToStep(step) {
             break;
         case 3:
             setupTreatmentCustomizer();
+            initializeTreatmentPreview();
             break;
         case 4:
             generateFinalReport();
@@ -396,8 +397,26 @@ function loadFaceImage(ctx, isMobile = false) {
         // 绘制专业背景
         drawProfessionalBackground(ctx, canvasWidth, canvasHeight);
         
-        // 绘制面部图片
-        ctx.drawImage(faceImage, 0, 0, canvasWidth, canvasHeight);
+        // 绘制面部图片 - 居中对齐
+        const imgAspectRatio = faceImage.naturalWidth / faceImage.naturalHeight;
+        const canvasAspectRatio = canvasWidth / canvasHeight;
+        
+        let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+        
+        if (imgAspectRatio > canvasAspectRatio) {
+            // 图片更宽，以高度为准
+            drawHeight = canvasHeight;
+            drawWidth = drawHeight * imgAspectRatio;
+            offsetX = (canvasWidth - drawWidth) / 2;
+        } else {
+            // 图片更高，以宽度为准
+            drawWidth = canvasWidth;
+            drawHeight = drawWidth / imgAspectRatio;
+            offsetY = (canvasHeight - drawHeight) / 2;
+        }
+        
+        // 居中绘制
+        ctx.drawImage(faceImage, offsetX, offsetY, drawWidth, drawHeight);
         
         // 移动端简化效果以提升性能
         if (isMobile) {
@@ -1204,64 +1223,101 @@ function showEnhancedHotspotTooltip(hotspot, number, x, y) {
 function showRegionDetails(region, issue, severity) {
     const regionDetails = document.getElementById('regionDetails');
     
-    // 获取对应的分析数据
-    const regionData = {
-        '前额': { elasticity: 72, wrinkleDepth: '中等', firmness: 68 },
-        '左眼周': { elasticity: 78, wrinkleDepth: '轻微', firmness: 82 },
-        '右眼周': { elasticity: 78, wrinkleDepth: '轻微', firmness: 82 },
-        '左面颊': { elasticity: 65, sagging: '轻度', pores: '良好' },
-        '右面颊': { elasticity: 65, sagging: '轻度', pores: '良好' },
-        '下颌线': { clarity: '需改善', firmness: 62, sagging: '中度' }
+    const severityColors = {
+        mild: '#4CAF50',
+        medium: '#FFC107', 
+        severe: '#FF6B6B'
     };
     
-    const data = regionData[region];
     const severityText = {
         'mild': '轻微',
         'medium': '中等',
         'severe': '严重'
     };
     
-    const severityColor = {
-        'mild': '#4CAF50',
-        'medium': '#FFC107',
-        'severe': '#FF6B6B'
-    };
+    const recommendations = getRecommendation(region, severity);
+    const detailedInfo = getDetailedAnalysis(region, issue, severity);
     
-    if (data) {
-        let details = `
-            <div class="region-analysis">
-                <h4>${region} 详细分析</h4>
-                <div class="analysis-summary">
-                    <span class="issue-badge" style="background: ${severityColor[severity]}20; color: ${severityColor[severity]};">
-                        ${issue} - ${severityText[severity]}
-                    </span>
-                </div>
-                <div class="metrics-list">
-        `;
-        
-        Object.keys(data).forEach(key => {
-            details += `<div class="metric-row">
-                <span class="metric-name">${getMetricName(key)}:</span>
-                <span class="metric-value">${data[key]}</span>
-            </div>`;
-        });
-        
-        details += `
-                </div>
-                <div class="recommendation">
-                    <p><strong>建议：</strong>${getRecommendation(region, severity)}</p>
+    const details = `
+        <div class="region-analysis">
+            <h4>${region}区域分析</h4>
+            <div class="analysis-summary">
+                <span class="issue-badge" style="background: ${severityColors[severity]}; color: white; padding: 6px 12px; border-radius: 15px; font-size: 12px; font-weight: 600;">
+                    ${issue} - ${severityText[severity]}
+                </span>
+                <div class="severity-indicator" style="margin-top: 10px;">
+                    <div class="severity-bar" style="background: #f0f0f0; height: 6px; border-radius: 3px; overflow: hidden;">
+                        <div class="severity-fill" style="background: ${severityColors[severity]}; height: 100%; width: ${severity === 'mild' ? '30%' : severity === 'medium' ? '60%' : '90%'}; transition: width 0.8s ease; border-radius: 3px;"></div>
+                    </div>
                 </div>
             </div>
-        `;
-        
-        regionDetails.innerHTML = details;
-        regionDetails.classList.add('slide-up');
-        
-        // 移除动画类
-        setTimeout(() => {
-            regionDetails.classList.remove('slide-up');
-        }, 600);
-    }
+            
+            <div class="detailed-analysis" style="margin: 15px 0; padding: 12px; background: #f8f9fa; border-radius: 8px; font-size: 13px; line-height: 1.5; border-left: 3px solid ${severityColors[severity]};">
+                <strong style="color: ${severityColors[severity]};">详细分析：</strong><br>
+                <span style="color: #555;">${detailedInfo.analysis}</span>
+            </div>
+            
+            <div class="metrics-list">
+                <div class="metric-row">
+                    <span class="metric-name">问题严重程度</span>
+                    <span class="metric-value" style="color: ${severityColors[severity]}; font-weight: 600;">
+                        ${severityText[severity]}
+                    </span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">建议治疗强度</span>
+                    <span class="metric-value" style="color: #5D3E8E; font-weight: 600;">${detailedInfo.intensity}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">预期改善程度</span>
+                    <span class="metric-value" style="color: #4CAF50; font-weight: 600;">${detailedInfo.improvement}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">治疗周期</span>
+                    <span class="metric-value">${detailedInfo.duration}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-name">维持时间</span>
+                    <span class="metric-value">${detailedInfo.maintenance}</span>
+                </div>
+            </div>
+            
+            <div class="treatment-params" style="margin: 15px 0; padding: 12px; background: rgba(93, 62, 142, 0.05); border-radius: 10px; border: 1px solid rgba(93, 62, 142, 0.1);">
+                <strong style="color: #5D3E8E; font-size: 14px; display: block; margin-bottom: 8px;">
+                    🎯 推荐参数设置
+                </strong>
+                <div style="font-size: 13px; color: #666; line-height: 1.4;">
+                    <div style="margin-bottom: 4px;">• <strong>能量强度：</strong>${detailedInfo.energy}</div>
+                    <div style="margin-bottom: 4px;">• <strong>脉冲频率：</strong>${detailedInfo.frequency}</div>
+                    <div>• <strong>治疗深度：</strong>${detailedInfo.depth}</div>
+                </div>
+            </div>
+            
+            <div class="recommendation" style="background: rgba(76, 175, 80, 0.05); border-left: 3px solid #4CAF50; padding: 12px; border-radius: 0 8px 8px 0;">
+                <strong style="color: #4CAF50; display: block; margin-bottom: 6px;">💡 专业建议</strong>
+                <p style="margin: 0; font-size: 13px; color: #555; line-height: 1.4;">${recommendations}</p>
+            </div>
+        </div>
+    `;
+    
+    regionDetails.innerHTML = details;
+    regionDetails.classList.add('slide-up');
+    
+    // 添加动画效果
+    setTimeout(() => {
+        const severityFill = regionDetails.querySelector('.severity-fill');
+        if (severityFill) {
+            severityFill.style.width = '0%';
+            setTimeout(() => {
+                severityFill.style.width = severity === 'mild' ? '30%' : severity === 'medium' ? '60%' : '90%';
+            }, 100);
+        }
+    }, 200);
+    
+    // 移除动画类
+    setTimeout(() => {
+        regionDetails.classList.remove('slide-up');
+    }, 600);
 }
 
 function getRecommendation(region, severity) {
@@ -1320,6 +1376,215 @@ function getMetricName(metric) {
         firmness: '紧致度'
     };
     return names[metric] || metric;
+}
+
+// 获取详细分析信息
+function getDetailedAnalysis(region, issue, severity) {
+    const detailedData = {
+        '前额': {
+            mild: {
+                analysis: '前额区域呈现轻微细纹，主要集中在动态表情产生的横纹。皮肤弹性良好，胶原蛋白结构基本完整。',
+                intensity: '温和模式（2-3级）',
+                improvement: '65-75%',
+                duration: '4-6周',
+                maintenance: '12-15个月',
+                energy: '60-80%',
+                frequency: '2-3Hz',
+                depth: '真皮浅层'
+            },
+            medium: {
+                analysis: '前额横纹较为明显，静态状态下可见。皮肤弹性开始下降，需要刺激胶原蛋白再生。',
+                intensity: '标准模式（4-6级）',
+                improvement: '75-85%',
+                duration: '6-8周',
+                maintenance: '10-12个月',
+                energy: '80-90%',
+                frequency: '3-4Hz',
+                depth: '真皮中层'
+            },
+            severe: {
+                analysis: '前额深度皱纹明显，伴有皮肤松弛。胶原蛋白大量流失，需要强化修复治疗。',
+                intensity: '强化模式（7-9级）',
+                improvement: '85-95%',
+                duration: '8-12周',
+                maintenance: '8-10个月',
+                energy: '90-100%',
+                frequency: '4-5Hz',
+                depth: '真皮深层'
+            }
+        },
+        '左眼周': {
+            mild: {
+                analysis: '眼周肌肤轻微松弛，鱼尾纹处于早期形成阶段。眼部肌肤较薄，需要温和处理。',
+                intensity: '温和模式（1-2级）',
+                improvement: '60-70%',
+                duration: '3-4周',
+                maintenance: '15-18个月',
+                energy: '40-60%',
+                frequency: '1-2Hz',
+                depth: '表皮层'
+            },
+            medium: {
+                analysis: '眼周鱼尾纹较为明显，眼袋轻微凸起。需要针对性紧致治疗。',
+                intensity: '标准模式（3-4级）',
+                improvement: '70-80%',
+                duration: '4-6周',
+                maintenance: '12-15个月',
+                energy: '60-75%',
+                frequency: '2-3Hz',
+                depth: '真皮浅层'
+            },
+            severe: {
+                analysis: '眼周严重松弛，鱼尾纹深度明显，眼袋突出。需要综合性抗衰方案。',
+                intensity: '强化模式（5-6级）',
+                improvement: '80-90%',
+                duration: '6-10周',
+                maintenance: '10-12个月',
+                energy: '75-85%',
+                frequency: '3-4Hz',
+                depth: '真皮中层'
+            }
+        },
+        '右眼周': {
+            mild: {
+                analysis: '眼周肌肤轻微松弛，鱼尾纹处于早期形成阶段。眼部肌肤较薄，需要温和处理。',
+                intensity: '温和模式（1-2级）',
+                improvement: '60-70%',
+                duration: '3-4周',
+                maintenance: '15-18个月',
+                energy: '40-60%',
+                frequency: '1-2Hz',
+                depth: '表皮层'
+            },
+            medium: {
+                analysis: '眼周鱼尾纹较为明显，眼袋轻微凸起。需要针对性紧致治疗。',
+                intensity: '标准模式（3-4级）',
+                improvement: '70-80%',
+                duration: '4-6周',
+                maintenance: '12-15个月',
+                energy: '60-75%',
+                frequency: '2-3Hz',
+                depth: '真皮浅层'
+            },
+            severe: {
+                analysis: '眼周严重松弛，鱼尾纹深度明显，眼袋突出。需要综合性抗衰方案。',
+                intensity: '强化模式（5-6级）',
+                improvement: '80-90%',
+                duration: '6-10周',
+                maintenance: '10-12个月',
+                energy: '75-85%',
+                frequency: '3-4Hz',
+                depth: '真皮中层'
+            }
+        },
+        '左面颊': {
+            mild: {
+                analysis: '面颊区域轻微松弛，苹果肌位置略有下移。整体肌肤状态良好。',
+                intensity: '温和模式（2-3级）',
+                improvement: '70-80%',
+                duration: '4-6周',
+                maintenance: '15-18个月',
+                energy: '70-85%',
+                frequency: '2-3Hz',
+                depth: '真皮浅层'
+            },
+            medium: {
+                analysis: '面颊松弛较明显，法令纹开始加深。需要提升面部轮廓。',
+                intensity: '标准模式（4-6级）',
+                improvement: '80-85%',
+                duration: '6-8周',
+                maintenance: '12-15个月',
+                energy: '85-95%',
+                frequency: '3-4Hz',
+                depth: '真皮中层'
+            },
+            severe: {
+                analysis: '面颊严重下垂，法令纹深重。需要强化轮廓重塑治疗。',
+                intensity: '强化模式（7-9级）',
+                improvement: '85-95%',
+                duration: '8-12周',
+                maintenance: '10-12个月',
+                energy: '95-100%',
+                frequency: '4-5Hz',
+                depth: '真皮深层'
+            }
+        },
+        '右面颊': {
+            mild: {
+                analysis: '面颊区域轻微松弛，苹果肌位置略有下移。整体肌肤状态良好。',
+                intensity: '温和模式（2-3级）',
+                improvement: '70-80%',
+                duration: '4-6周',
+                maintenance: '15-18个月',
+                energy: '70-85%',
+                frequency: '2-3Hz',
+                depth: '真皮浅层'
+            },
+            medium: {
+                analysis: '面颊松弛较明显，法令纹开始加深。需要提升面部轮廓。',
+                intensity: '标准模式（4-6级）',
+                improvement: '80-85%',
+                duration: '6-8周',
+                maintenance: '12-15个月',
+                energy: '85-95%',
+                frequency: '3-4Hz',
+                depth: '真皮中层'
+            },
+            severe: {
+                analysis: '面颊严重下垂，法令纹深重。需要强化轮廓重塑治疗。',
+                intensity: '强化模式（7-9级）',
+                improvement: '85-95%',
+                duration: '8-12周',
+                maintenance: '10-12个月',
+                energy: '95-100%',
+                frequency: '4-5Hz',
+                depth: '真皮深层'
+            }
+        },
+        '下颌线': {
+            mild: {
+                analysis: '下颌线轮廓略显模糊，双下巴初现。肌肉张力开始下降。',
+                intensity: '温和模式（3-4级）',
+                improvement: '75-85%',
+                duration: '6-8周',
+                maintenance: '12-15个月',
+                energy: '80-90%',
+                frequency: '3-4Hz',
+                depth: '真皮中层'
+            },
+            medium: {
+                analysis: '下颌线明显松弛，双下巴较为突出。需要重点紧致治疗。',
+                intensity: '标准模式（5-7级）',
+                improvement: '85-90%',
+                duration: '8-10周',
+                maintenance: '10-12个月',
+                energy: '90-95%',
+                frequency: '4-5Hz',
+                depth: '真皮深层'
+            },
+            severe: {
+                analysis: '下颌线严重松弛下垂，双下巴明显。需要强化轮廓重塑方案。',
+                intensity: '强化模式（8-10级）',
+                improvement: '90-95%',
+                duration: '10-16周',
+                maintenance: '8-10个月',
+                energy: '95-100%',
+                frequency: '5-6Hz',
+                depth: '筋膜层'
+            }
+        }
+    };
+    
+    return detailedData[region]?.[severity] || {
+        analysis: '该区域需要专业评估，建议咨询医师制定个性化方案。',
+        intensity: '待定',
+        improvement: '待评估',
+        duration: '待定',
+        maintenance: '待定',
+        energy: '待定',
+        frequency: '待定',
+        depth: '待定'
+    };
 }
 
 // 雷达图初始化（仅桌面端）
@@ -1586,23 +1851,93 @@ function updateEffectPreview() {
     
     const improvement = Math.min(95, baseImprovement + intensityBonus + frequencyBonus + depthBonus);
     
-    document.getElementById('improvementRate').textContent = `${improvement}%`;
+    // 更新桌面端改善程度
+    const improvementRateEl = document.getElementById('improvementRate');
+    if (improvementRateEl) {
+        improvementRateEl.textContent = `${improvement}%`;
+    }
+    
+    // 更新移动端改善程度
+    const mobileImprovementValue = document.getElementById('mobileImprovementValue');
+    const mobileImprovementFill = document.getElementById('mobileImprovementFill');
+    
+    if (mobileImprovementValue && mobileImprovementFill) {
+        mobileImprovementValue.textContent = `${improvement}%`;
+        // 动画更新进度条
+        setTimeout(() => {
+            mobileImprovementFill.style.width = `${improvement}%`;
+        }, 100);
+    }
+    
+    // 更新治疗图片效果（根据强度调整滤镜）
+    updateTreatmentImages(improvement);
     
     // 更新疼痛程度
     const painLevels = ['无感', '轻微', '中等', '明显'];
     const painIndex = Math.floor((treatmentParams.intensity - 1) / 3);
-    document.getElementById('painLevel').textContent = painLevels[painIndex] || '轻微';
+    const painLevelEl = document.getElementById('painLevel');
+    if (painLevelEl) {
+        painLevelEl.textContent = painLevels[painIndex] || '轻微';
+    }
     
     // 更新恢复时间
     const recoveryDays = Math.ceil(treatmentParams.intensity / 2);
-    document.getElementById('recoveryTime').textContent = `${recoveryDays}-${recoveryDays + 1}天`;
+    const recoveryTimeEl = document.getElementById('recoveryTime');
+    if (recoveryTimeEl) {
+        recoveryTimeEl.textContent = `${recoveryDays}-${recoveryDays + 1}天`;
+    }
     
     // 更新费用
     const baseCost = 6000;
     const intensityCost = treatmentParams.intensity * 400;
     const frequencyCost = treatmentParams.frequency * 200;
     const totalCost = baseCost + intensityCost + frequencyCost;
-    document.getElementById('estimatedCost').textContent = `¥${totalCost.toLocaleString()}`;
+    const estimatedCostEl = document.getElementById('estimatedCost');
+    if (estimatedCostEl) {
+        estimatedCostEl.textContent = `¥${totalCost.toLocaleString()}`;
+    }
+}
+
+// 更新治疗图片效果
+function updateTreatmentImages(improvement) {
+    const beforeImg = document.getElementById('beforeTreatmentImg');
+    const afterImg = document.getElementById('afterTreatmentImg');
+    
+    if (beforeImg && afterImg) {
+        // 根据改善程度调整图片效果
+        const contrastBonus = Math.round(improvement / 5); // 0-19的对比度增强
+        const brightnessBonus = Math.round(improvement / 10); // 0-9的亮度增强
+        
+        // 治疗前保持原样
+        beforeImg.style.filter = 'none';
+        
+        // 治疗后图片增强效果
+        afterImg.style.filter = `
+            contrast(${100 + contrastBonus}%) 
+            brightness(${100 + brightnessBonus}%) 
+            saturate(${100 + contrastBonus}%)
+        `;
+        
+        console.log(`🎨 图片效果更新: 改善${improvement}%, 对比度+${contrastBonus}%, 亮度+${brightnessBonus}%`);
+    }
+}
+
+// 初始化治疗效果预览
+function initializeTreatmentPreview() {
+    const comparisonSlider = document.getElementById('comparisonSlider');
+    
+    if (comparisonSlider) {
+        comparisonSlider.addEventListener('input', function() {
+            const value = parseInt(this.value);
+            // 可以添加滑块交互效果
+            console.log(`对比滑块位置: ${value}%`);
+        });
+    }
+    
+    // 初始加载图片
+    setTimeout(() => {
+        updateTreatmentImages(75); // 默认75%改善
+    }, 1000);
 }
 
 function updateTreatmentMetrics() {

@@ -361,14 +361,37 @@
                         <div class="before-after-container">
                             <div class="comparison-slider">
                                 <div class="before-image">
-                                    <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iI2Y4ZjlmYSIvPgo8dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE4IiBmaWxsPSIjMzMzIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+VHJlYXRtZW50IEJlZm9yZTwvdGV4dD4KPC9zdmc+" alt="治疗前">
+                                    <img id="beforeTreatmentImg" src="face.png" alt="治疗前" style="filter: none;">
                                     <span class="image-label">治疗前</span>
                                 </div>
                                 <div class="after-image">
-                                    <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iI2UzZjJmZCIvPgo8dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE4IiBmaWxsPSIjMzMzIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+VHJlYXRtZW50IEFmdGVyPC90ZXh0Pgo8L3N2Zz4=" alt="治疗后">
+                                    <img id="afterTreatmentImg" src="treat.png" alt="治疗后" style="filter: none;">
                                     <span class="image-label">预期效果</span>
                                 </div>
-                                <input type="range" class="comparison-control" min="0" max="100" value="50">
+                                <input type="range" class="comparison-control" min="0" max="100" value="50" id="comparisonSlider">
+                            </div>
+                            
+                            <!-- 移动端专用简化预览 -->
+                            <div class="mobile-treatment-preview">
+                                <h4>治疗效果对比</h4>
+                                <div class="mobile-comparison-grid">
+                                    <div class="mobile-comparison-item">
+                                        <img src="face.png" alt="治疗前">
+                                        <span class="mobile-image-label">治疗前</span>
+                                    </div>
+                                    <div class="mobile-comparison-arrow">→</div>
+                                    <div class="mobile-comparison-item">
+                                        <img src="treat.png" alt="治疗后">
+                                        <span class="mobile-image-label">预期效果</span>
+                                    </div>
+                                </div>
+                                <div class="mobile-improvement-indicator">
+                                    <span class="mobile-improvement-label">预期改善程度</span>
+                                    <div class="mobile-improvement-bar">
+                                        <div class="mobile-improvement-fill" id="mobileImprovementFill" style="width: 75%"></div>
+                                    </div>
+                                    <span class="mobile-improvement-value" id="mobileImprovementValue">75%</span>
+                                </div>
                             </div>
                         </div>
                         
