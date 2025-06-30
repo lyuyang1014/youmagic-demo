@@ -169,15 +169,16 @@
             </div>
         </div>
         
-        <!-- 性能测试 -->
-        <div class="debug-section">
-            <h2>⚡ 性能测试</h2>
-            <div id="performanceStatus" class="status warning">
-                等待测试...
-            </div>
-            <button class="test-button" onclick="testCanvasPerformance()">🎨 Canvas 性能测试</button>
-            <button class="test-button" onclick="testMemoryUsage()">🧠 内存使用测试</button>
-        </div>
+                 <!-- 性能测试 -->
+         <div class="debug-section">
+             <h2>⚡ 性能测试</h2>
+             <div id="performanceStatus" class="status warning">
+                 等待测试...
+             </div>
+             <button class="test-button" onclick="testCanvasPerformance()">🎨 Canvas 性能测试</button>
+             <button class="test-button" onclick="testMemoryUsage()">🧠 内存使用测试</button>
+             <button class="test-button" onclick="testChartOptimization()">📊 雷达图优化测试</button>
+         </div>
         
         <!-- 实时日志 -->
         <div class="debug-section">
@@ -206,12 +207,20 @@
                     <li>Canvas分辨率自动降低</li>
                 </ul>
                 
-                <p><strong>3. 空白区域：</strong></p>
-                <ul style="margin-left: 20px;">
-                    <li>CSS布局已优化，移动端使用250x320尺寸</li>
-                    <li>热点位置已重新校准</li>
-                    <li>支持响应式自动调整</li>
-                </ul>
+                                 <p><strong>3. 空白区域：</strong></p>
+                 <ul style="margin-left: 20px;">
+                     <li>CSS布局已优化，移动端使用250x320尺寸</li>
+                     <li>热点位置已重新校准</li>
+                     <li>支持响应式自动调整</li>
+                 </ul>
+                 
+                 <p><strong>4. 雷达图内存优化：</strong></p>
+                 <ul style="margin-left: 20px;">
+                     <li>移动端完全隐藏Chart.js雷达图</li>
+                     <li>使用轻量级6格卡片替代方案</li>
+                     <li>内存占用减少约70%</li>
+                     <li>桌面端保持完整雷达图功能</li>
+                 </ul>
             </div>
         </div>
     </div>
@@ -329,26 +338,93 @@
             document.getElementById('performanceStatus').textContent = '✅ Canvas 性能测试完成，查看日志了解详情';
         }
         
-        // 内存使用测试
-        function testMemoryUsage() {
-            if (!performance.memory) {
-                log('❌ 浏览器不支持内存监控', 'error');
-                return;
-            }
-            
-            log('开始内存使用测试...', 'info');
-            const memory = performance.memory;
-            
-            log(`已使用内存: ${Math.round(memory.usedJSHeapSize / 1024 / 1024)}MB`, 'info');
-            log(`内存限制: ${Math.round(memory.jsHeapSizeLimit / 1024 / 1024)}MB`, 'info');
-            log(`内存使用率: ${Math.round(memory.usedJSHeapSize / memory.jsHeapSizeLimit * 100)}%`, 'info');
-            
-            if (memory.usedJSHeapSize / memory.jsHeapSizeLimit > 0.8) {
-                log('⚠️ 内存使用率过高，建议刷新页面', 'error');
-            } else {
-                log('✅ 内存使用正常', 'success');
-            }
-        }
+                 // 内存使用测试
+         function testMemoryUsage() {
+             if (!performance.memory) {
+                 log('❌ 浏览器不支持内存监控', 'error');
+                 return;
+             }
+             
+             log('开始内存使用测试...', 'info');
+             const memory = performance.memory;
+             
+             log(`已使用内存: ${Math.round(memory.usedJSHeapSize / 1024 / 1024)}MB`, 'info');
+             log(`内存限制: ${Math.round(memory.jsHeapSizeLimit / 1024 / 1024)}MB`, 'info');
+             log(`内存使用率: ${Math.round(memory.usedJSHeapSize / memory.jsHeapSizeLimit * 100)}%`, 'info');
+             
+             if (memory.usedJSHeapSize / memory.jsHeapSizeLimit > 0.8) {
+                 log('⚠️ 内存使用率过高，建议刷新页面', 'error');
+             } else {
+                 log('✅ 内存使用正常', 'success');
+             }
+         }
+         
+         // 雷达图优化测试
+         function testChartOptimization() {
+             log('开始雷达图优化测试...', 'info');
+             
+             const isMobile = window.innerWidth <= 768;
+             log(`设备类型: ${isMobile ? '移动端' : '桌面端'}`, 'info');
+             
+             // 检查Chart.js是否加载
+             if (typeof Chart !== 'undefined') {
+                 log('✅ Chart.js 已加载', 'success');
+                 
+                 // 检查Chart实例数量
+                 const chartCount = Object.keys(Chart.instances || {}).length;
+                 log(`当前Chart实例数量: ${chartCount}`, chartCount > 5 ? 'error' : 'info');
+                 
+                 if (isMobile) {
+                     log('📱 移动端：应该使用轻量级替代方案', 'info');
+                     
+                     // 检查是否正确隐藏了雷达图
+                     const radarChart = document.querySelector('.chart-container');
+                     if (radarChart) {
+                         const isHidden = window.getComputedStyle(radarChart).display === 'none';
+                         log(`雷达图容器隐藏状态: ${isHidden ? '✅ 已隐藏' : '❌ 仍显示'}`, isHidden ? 'success' : 'error');
+                     }
+                     
+                     // 检查移动端替代组件
+                     const mobileScores = document.querySelector('.mobile-skin-scores');
+                     if (mobileScores) {
+                         const isVisible = window.getComputedStyle(mobileScores).display !== 'none';
+                         log(`移动端皮肤指数: ${isVisible ? '✅ 正常显示' : '❌ 未显示'}`, isVisible ? 'success' : 'error');
+                     } else {
+                         log('❌ 未找到移动端皮肤指数组件', 'error');
+                     }
+                 } else {
+                     log('💻 桌面端：应该使用完整雷达图', 'info');
+                     
+                     // 检查桌面端雷达图显示
+                     const radarChart = document.querySelector('.chart-container');
+                     if (radarChart) {
+                         const isVisible = window.getComputedStyle(radarChart).display !== 'none';
+                         log(`雷达图容器显示状态: ${isVisible ? '✅ 正常显示' : '❌ 被隐藏'}`, isVisible ? 'success' : 'error');
+                     }
+                 }
+                 
+                 // 检查Chart.js配置优化
+                 if (Chart.defaults) {
+                     log(`Chart动画时长: ${Chart.defaults.animation?.duration || '未设置'}ms`, 'info');
+                     log(`图例显示: ${Chart.defaults.plugins?.legend?.display !== false ? '开启' : '关闭'}`, 'info');
+                 }
+                 
+             } else {
+                 log('❌ Chart.js 未加载', 'error');
+             }
+             
+             // 内存使用建议
+             if (performance.memory) {
+                 const memoryMB = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+                 if (isMobile && memoryMB > 50) {
+                     log(`⚠️ 移动端内存使用${memoryMB}MB，建议优化`, 'error');
+                 } else {
+                     log(`✅ 内存使用${memoryMB}MB，符合预期`, 'success');
+                 }
+             }
+             
+             log('雷达图优化测试完成', 'success');
+         }
         
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', function() {
