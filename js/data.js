@@ -11,7 +11,7 @@ export const DATA = {
     techEn: 'High Energy Monopolar RF',
     type: '单极电容耦合射频皮肤治疗仪', // IFU p.6
     indication: '本产品在医疗机构中，由有资质的医务人员经培训合格后使用，利用射频热效应减轻面部轻、中度皮肤皱纹。', // IFU p.4
-    indicationShort: '减轻面部轻/中度皮肤皱纹', // DA p.1
+    indicationShort: '减轻面部轻、中度皮肤皱纹', // DA p.1 wording; separator per IFU p.4 (合规：轻、中度)
     regNo: '国械注准 20243092361', // IFU p.1 (第三类医疗器械，按注册证编号规则)
     registrant: '昆山威脉通医疗科技有限公司',
     registrantAddr: '江苏省苏州市昆山市玉山镇登云路 268 号 1 号房 801 室 B2',

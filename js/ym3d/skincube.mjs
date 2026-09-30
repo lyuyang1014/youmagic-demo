@@ -37,11 +37,16 @@
 //   opts.padPosition [x,y,z] pad centre in tissue coords [[0.35,-3.35,0.55]]
 //   opts.faceCanvas  HTMLCanvasElement (e.g. SkinFX.Histology output, created with
 //                    preserveDrawingBuffer:true) mapped onto the FRONT cut face (z = +2).
-//                    Call refreshFace() after re-rendering that canvas.
+//                    Call refreshFace() after re-rendering that canvas (re-uploads + regenerates mipmaps).
 //   opts.faceCanvasRange {yTop, yBottom}: tissue y of the canvas top / bottom edge. The default
 //                    matches Histology at magnification 0 (surface at 11 % of the height,
 //                    dermis base at ≈69 %): {yTop:0.209, yBottom:-1.688}.
 //   opts.fibres      {typeI, typeIII} base (week-0) instance counts [{typeI:280, typeIII:420}]
+//   opts.fibreRadial   {typeI, typeIII} (or one number for both) sides of each fibre tube [{typeI:6, typeIII:5}]
+//   opts.fibreSegments {typeI, typeIII} (or one number) segments along each fibre [{typeI:36, typeIII:24}]
+//                    Defaults = the real-time budget (website). Macro close-ups that fill the frame with
+//                    fibres opt in, e.g. radial {12, 10} + segments {96, 64} (round tubes and ends, smooth
+//                    Type Ⅰ helix / Type Ⅲ crimp; ≈4× the fibre triangles, still one draw call per type).
 //   opts.collagen    {weeks:[0,4,12], type1:[1,1.42,1.61], type3:[1,1.38,1.49]} (data.charts.collagen)
 //   opts.mist        cooling mist sprite count [84]
 //
@@ -88,6 +93,9 @@
 // 1440×900 dpr 1, ≈20 ms at dpr 2 (2880×1800) → cap dpr at ~1.5 for 60 fps. ~15 draw calls,
 // ≤1.1k fibre instances at week 12. Cost is per-pixel procedural shading of the cut faces.
 // No postprocessing; glow = additive meshes + emissive. Programs compile on the first render (~1 s).
+// Anti-aliasing: the procedural cell / furrow / lamination patterns are band-limited with screen-space
+// derivatives (fade to their mean below a few pixels per cell); for full-frame macro video shots
+// additionally supersample the stage (createStage dpr 1.5–2 on a 1× canvas).
 // Extras: groups {epidermis, dermis, subcutis, smas, pad, tip} (explode offsets are applied to them).
 
 const FALLBACK_HEAT = [0x0b1030, 0x2a1548, 0x6a2a8c, 0xb8307a, 0xf0603f, 0xffc45e, 0xfff4d6]; // = stage.mjs BRAND.heat
@@ -266,14 +274,21 @@ const GLSL_TISSUE_FRAG_MAIN = /* glsl */`
 #if SLAB == 0
   float J = yJunction(p.xz, S);
   float dJ = p.y - J;
-  float sc = 1. - smoothstep(0.018, 0.028, depth);
+  float fwD = fwidth(depth);
+  float sc = 1. - smoothstep(0.018 - fwD, 0.028 + fwD, depth);
   float basal = 1. - smoothstep(0.006, 0.032, dJ);
-  vec3 cv = voro3(p * vec3(34., 34. * mix(2.4, 1.0, smoothstep(0.02, 0.09, depth)), 34.));
-  float cellEdge = 1. - smoothstep(0.0, 0.12, cv.y - cv.x);
-  float nuc = 1. - smoothstep(0.10, 0.17, cv.x);
-  float lam = 0.5 + 0.5*sin(depth*540. + fbm2(vec2(u*9., depth*40.))*5.);
+  vec3 cq = p * vec3(34., 34. * mix(2.4, 1.0, smoothstep(0.02, 0.09, depth)), 34.);
+  vec3 cv = voro3(cq);
+  // band-limit the keratinocyte pattern: cell pitches per pixel → fade cells (and their relief) to the mean
+  // once they shrink below a few pixels (grazing cut faces / wide shots alias into barcode streaks otherwise)
+  float cDet = 1. - smoothstep(0.22, 0.6, max(length(dFdx(cq)), length(dFdy(cq))));
+  float ce = cv.y - cv.x;
+  float cellEdge = mix(0.18, 1. - smoothstep(0.0, 0.12 + fwidth(ce)*1.5, ce), cDet);
+  float nuc = mix(0.06, 1. - smoothstep(0.10, 0.17 + fwidth(cv.x), cv.x), cDet);
+  float lph = depth*540.;
+  float lam = mix(0.5, 0.5 + 0.5*sin(lph + fbm2(vec2(u*9., depth*40.))*5.), 1. - smoothstep(1.0, 2.6, fwidth(lph)));
   heCol = mix(vec3(0.90, 0.66, 0.58), vec3(0.58, 0.36, 0.32), basal*0.85);
-  heCol *= 0.92 + 0.08*cv.z;
+  heCol *= 0.92 + 0.08*mix(0.5, cv.z, cDet);
   heCol = mix(heCol, heCol*0.8, cellEdge*0.5);
   heCol = mix(heCol, vec3(0.44, 0.25, 0.42), nuc*0.5*(1. - sc)*(1. - basal*0.5));
   heCol = mix(heCol, vec3(0.94, 0.84, 0.75)*(0.93 + 0.07*lam), sc);
@@ -435,12 +450,18 @@ const GLSL_TISSUE_FRAG_MAIN = /* glsl */`
 const GLSL_SKIN_FRAG_MAIN = /* glsl */`
   vec3 p = vTP; vec2 xz = p.xz;
   if (p.x > uNotch.x && p.z > uNotch.y) discard;
-  vec3 m1 = voro2(xz * vec2(10.5, 13.5) + vec2(3.3, 1.1));
-  float fur1 = 1. - smoothstep(0.0, 0.085, m1.y - m1.x);
-  vec3 m2 = voro2(xz * vec2(24., 30.) + vec2(7.1, 2.9));
-  float fur2 = 1. - smoothstep(0.0, 0.07, m2.y - m2.x);
+  // micro-relief furrows, band-limited: edges widen by the pixel footprint (area-preserving) and the
+  // pattern fades to its mean once cells shrink below a few pixels (grazing / wide views)
+  vec2 q1 = xz * vec2(10.5, 13.5) + vec2(3.3, 1.1), q2 = xz * vec2(24., 30.) + vec2(7.1, 2.9);
+  vec3 m1 = voro2(q1);
+  float e1 = m1.y - m1.x, w1 = fwidth(e1)*0.6;
+  float fur1 = mix(0.12, 1. - smoothstep(-w1, 0.085 + w1, e1), 1. - smoothstep(0.25, 0.7, max(length(dFdx(q1)), length(dFdy(q1)))));
+  vec3 m2 = voro2(q2);
+  float e2 = m2.y - m2.x, w2 = fwidth(e2)*0.6;
+  float fur2 = mix(0.1, 1. - smoothstep(-w2, 0.07 + w2, e2), 1. - smoothstep(0.25, 0.7, max(length(dFdx(q2)), length(dFdy(q2)))));
   vec3 pv = voro2(xz * 4.6 + vec2(9.1, 4.4));
-  float pore = (1. - smoothstep(0.012, 0.022, pv.x)) * step(0.35, pv.z);
+  float wpv = fwidth(pv.x)*0.5;
+  float pore = (1. - smoothstep(0.012 - wpv, 0.022 + wpv, pv.x)) * step(0.35, pv.z);
   float fold = clamp(-wrinkleSum(xz) / 0.035, 0., 1.);
   float mott = fbm2(xz * 2.6);
   vec3 skin = vec3(0.76, 0.52, 0.42);
@@ -684,7 +705,8 @@ export function createSkinCube(THREE, opts = {}) {
   const faceU = { uFaceTex: { value: null }, uFaceMap: { value: new THREE.Vector4(0.209, -1.688, 1, 0) }, uFaceMix: { value: 1 } };
   if (opts.faceCanvas) {
     faceTex = new THREE.CanvasTexture(opts.faceCanvas); faceTex.colorSpace = THREE.SRGBColorSpace;
-    faceTex.minFilter = THREE.LinearFilter; faceTex.generateMipmaps = false; texs.push(faceTex);
+    // mipmapped + anisotropic: the cut face is often seen at a grazing angle (three clamps anisotropy to the GPU max)
+    faceTex.minFilter = THREE.LinearMipmapLinearFilter; faceTex.generateMipmaps = true; faceTex.anisotropy = 8; texs.push(faceTex);
     const r = opts.faceCanvasRange || { yTop: 0.209, yBottom: -1.688 };
     faceU.uFaceTex.value = faceTex;
     faceU.uFaceMap.value.set(r.yTop, r.yBottom, (opts.faceCanvas.width || 16) / Math.max(1, opts.faceCanvas.height || 9), 1);
@@ -776,8 +798,11 @@ export function createSkinCube(THREE, opts = {}) {
   const fcount = opts.fibres || {};
   const base1 = Math.max(1, Math.round(fcount.typeI ?? 280)), base3 = Math.max(1, Math.round(fcount.typeIII ?? 420));
   const max1 = Math.ceil(base1 * coll.type1[2]) + 1, max3 = Math.ceil(base3 * coll.type3[2]) + 1;
+  // tessellation: defaults (radial 6/5, along 36/24) are the real-time budget; macro shots opt in to more
+  const tess = (o, key, d) => { const v = typeof o === 'number' ? o : (o && o[key]); return Math.round(clamp(num(v, d), 3, 256)); };
   function fibreGeometry(type) {
-    const segL = type === 1 ? 36 : 24, rad = type === 1 ? 6 : 5, strands = type === 1 ? 3 : 1;
+    const key = type === 1 ? 'typeI' : 'typeIII';
+    const segL = tess(opts.fibreSegments, key, type === 1 ? 36 : 24), rad = tess(opts.fibreRadial, key, type === 1 ? 6 : 5), strands = type === 1 ? 3 : 1;
     const aF = [], pos = [], idx = []; let base = 0;
     for (let k = 0; k < strands; k++) {
       for (let i = 0; i <= segL; i++) for (let j = 0; j <= rad; j++) { aF.push(i / segL, k, (j / rad) * Math.PI * 2); pos.push(i / segL, 0, 0); }
