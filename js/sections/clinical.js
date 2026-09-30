@@ -1,6 +1,27 @@
 // #clinical — 临床数据 (light "lab" theme, modelled on 彩页 p.3)
 // Facts: DATA.study (使用说明书 p.32–33) + DATA.charts (彩页 p.3). Estimated values (GAIS, FWCS 跨级) are always labelled “≈ 估读”.
 // Comparator is only ever referred to as “对照器械（已上市单极射频治疗系统）/ 对照组”.
+// 3D header (YM3D, one WebGL context via mount3D): createParticleNumber assembles “212” in the h2 when the
+// header scrolls in (re-shaded as brand “ink” for the light page + a projected soft shadow), createMedallions
+// spins the 4 centre seals into a row on a rail (seals were already shown here; the whole site sits behind the
+// 专业人士 gate). Driven by: intro clocks (enter), scroll (camera + number swing), drag (number spin), hover /
+// tap / keyboard (coin focus), pointer parallax. Names are DOM overlays placed from medallion anchors.
+// Without WebGL the same DOM renders the 2D gradient number + seal cards. Charts stay 2D (precision).
+import * as THREE from 'three';
+import * as S3 from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createParticleNumber, createMedallions, projectAnchor } from '../ym3d/dataviz.mjs';
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built well before they enter the viewport, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
 
 const COL = { ym: '#1f7a57', ctl: '#a4aaa7' };
 const GAIS_C = ['#0f5c3d', '#2e9e6a', '#8fd0a8', '#c9cecb', '#c0694e'];
@@ -24,11 +45,33 @@ export default {
     root.innerHTML = `
 <div class="cl-strip" aria-hidden="true"><span>临床研究</span></div>
 <div class="wrap">
-  <header class="sec-head">
+ <div class="cl-hero">
+  <header class="sec-head cl-head">
     <span class="eyebrow">10 · CLINICAL EVIDENCE</span>
-    <h2 class="h1"><span class="grad-text num cl-hero-n">${S.n}</span> 例注册临床研究</h2>
+    <h2 class="h1 cl-title"><span class="grad-text num cl-hero-n">${S.n}<i class="cl-bl" aria-hidden="true"></i></span><span class="cl-title__u">例</span><span class="cl-title__t">注册临床研究</span></h2>
     <p class="lead">YOUMAGIC 高能单极射频，用于减轻面部轻、中度皮肤皱纹。注册临床试验以对照器械（已上市单极射频治疗系统）为对照，采用${S.design.slice(0, 5).join('、')}的非劣效性设计，随访 6 个月（${S.followUpDays} 天）。</p>
   </header>
+  <span class="cl-hint mono" aria-hidden="true"><i></i>拖动旋转 · 3D</span>
+
+  <section class="cl-centers" aria-label="临床中心">
+    <div class="cl-centers__head">
+      <p class="cl-kicker"><span class="mono">MULTICENTER</span>四大医学临床中心</p>
+      <p class="small">多中心入组 · 统一方案 · 盲法评价</p>
+    </div>
+    <div class="cl-centers__row">
+      <svg class="cl-centers__link" aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 1000 10"><line x1="125" y1="5" x2="875" y2="5"/><line class="pulse" x1="125" y1="5" x2="875" y2="5"/></svg>
+      ${S.centers.map((c, i) => `
+      <figure class="cl-center" style="--i:${i}" data-i="${i}">
+        <div class="cl-seal">
+          <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring" cx="60" cy="60" r="57"/><circle class="ring2" cx="60" cy="60" r="57"/></svg>
+          <img src="assets/img/center-${i + 1}.webp" alt="${esc(c)} 院徽" width="180" height="182" loading="lazy" decoding="async">
+        </div>
+        <figcaption><span class="mono">0${i + 1}</span>${esc(c)}</figcaption>
+      </figure>`).join('')}
+    </div>
+    <p class="tag-src">来源：产品彩页 第 5 页</p>
+  </section>
+ </div>
 
   <div class="cl-stats" data-reveal>
     <div class="cl-stat"><span class="cl-stat__v num" data-count="${S.n}">${S.n}</span><span class="cl-stat__u">例</span><span class="cl-stat__k">入选受试者</span></div>
@@ -106,25 +149,6 @@ export default {
       <p class="cl-verdict__t">治疗后第 30、90、180 天面部皱纹改善有效率及 FWCS 皱纹评分等，<span class="cl-verdict__hl">均非劣于对照器械<svg viewBox="0 0 300 12" preserveAspectRatio="none" aria-hidden="true"><path d="M2 8C60 3 140 2 298 6"/></svg></span>，治疗效果与对照器械差异无统计学意义。</p>
       <p class="tag-src">来源：使用说明书 第 32–33 页 · 前瞻性、多中心、随机、平行对照、盲法评价、非劣效性设计</p>
     </div>
-  </section>
-
-  <section class="cl-centers" data-reveal aria-label="临床中心">
-    <div class="cl-centers__head">
-      <p class="cl-kicker"><span class="mono">MULTICENTER</span>四大医学临床中心</p>
-      <p class="small">多中心入组 · 统一方案 · 盲法评价</p>
-    </div>
-    <div class="cl-centers__row">
-      <svg class="cl-centers__link" aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 1000 10"><line x1="125" y1="5" x2="875" y2="5"/><line class="pulse" x1="125" y1="5" x2="875" y2="5"/></svg>
-      ${S.centers.map((c, i) => `
-      <figure class="cl-center" style="--i:${i}">
-        <div class="cl-seal">
-          <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring" cx="60" cy="60" r="57"/><circle class="ring2" cx="60" cy="60" r="57"/></svg>
-          <img src="assets/img/center-${i + 1}.webp" alt="${esc(c)} 院徽" width="180" height="182" loading="lazy" decoding="async">
-        </div>
-        <figcaption><span class="mono">0${i + 1}</span>${esc(c)}</figcaption>
-      </figure>`).join('')}
-    </div>
-    <p class="tag-src">来源：产品彩页 第 5 页</p>
   </section>
 
   <section class="cl-charts" aria-label="临床数据图表">
@@ -248,6 +272,7 @@ export default {
 </div>`;
 
     initIntro(root, ctx);
+    initHero3D(root, ctx);
     const tip = makeTooltip();
     effChart(root.querySelector('#cl-fig-eff'), ctx, tip);
     gaisChart(root.querySelector('#cl-fig-gais'), ctx, tip);
@@ -272,10 +297,346 @@ function initIntro(root, ctx) {
   // CSS-driven reveal states (lines draw, seals ring, underline) + pause flow particles off-screen
   flowOn.forEach((el) => lib.whenVisible(el, () => el.classList.add('is-in', 'is-live'), () => el.classList.remove('is-live'), '-12% 0px'));
   if (ctx.reduced) flowOn.forEach((el) => el.classList.add('is-in'));
-  // hover lift on seals
+  // hover lift on seals (2D fallback only — in 3D mode the coins react instead)
+  const flat = () => ctx.reduced || root.classList.contains('is-3d');
   root.querySelectorAll('.cl-center').forEach((f) => {
-    f.addEventListener('pointerenter', () => !ctx.reduced && gsap.to(f.querySelector('img'), { rotate: 8, scale: 1.04, duration: 0.6, ease: 'expo.out' }));
-    f.addEventListener('pointerleave', () => !ctx.reduced && gsap.to(f.querySelector('img'), { rotate: 0, scale: 1, duration: 0.8, ease: 'expo.out' }));
+    f.addEventListener('pointerenter', () => !flat() && gsap.to(f.querySelector('img'), { rotate: 8, scale: 1.04, duration: 0.6, ease: 'expo.out' }));
+    f.addEventListener('pointerleave', () => !flat() && gsap.to(f.querySelector('img'), { rotate: 0, scale: 1, duration: 0.8, ease: 'expo.out' }));
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* 3D header — particle “212” + four clinical-centre medallions        */
+/* One WebGL context (mount3D) behind the header. The DOM layout stays   */
+/* the source of truth: the transparent “212” slot in the h2 and the 4   */
+/* seal slots define where the 3D objects sit (camera is solved so that  */
+/* 1 CSS px ↔ a fixed world size on the z = 0 plane at rest), so the page */
+/* reads identically in the 2D fallback. Names are DOM overlays placed   */
+/* from the medallion anchors every frame.                               */
+const NUM_SIZE = 1.4;     // ParticleNumber cap height (world) — the slot's cap height maps onto it
+const FOV = 30;
+const LIGHT_DIR = [0.75, 2.1, 4];   // key light (towards the light); number + coin shadows share it
+const NUM_WALL = 0.38;    // depth of the “page” behind the number (world) — where its soft shadow lands
+const COIN_WALL = 0.42;   // … behind the coins (in coin-diameter units)
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+/** light, neutral studio for brushed metal on a pale page (the stage default is the dark violet studio) */
+function lightEnv(renderer) {
+  const env = new THREE.Scene();
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x7d8380, side: THREE.BackSide }));
+  box.scale.set(20, 12, 20); env.add(box);
+  const panel = (w, h, color, k, pos, rot) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side: THREE.DoubleSide }));
+    m.position.set(...pos); if (rot) m.rotation.set(...rot); env.add(m);
+  };
+  panel(10, 4, 0xffffff, 4.2, [0, 5.8, 0], [Math.PI / 2, 0, 0]);        // overhead softbox
+  panel(4, 7, 0xffffff, 2.2, [-9.8, 1, 1], [0, Math.PI / 2, 0]);        // left strip
+  panel(3, 6, 0xd8cbff, 2.0, [9.8, 1, -2], [0, -Math.PI / 2, 0]);       // right, violet-tinted
+  panel(12, 3, 0xf1f4f0, 1.3, [0, 0.8, -9.8]);                           // back
+  panel(9, 1.4, 0x8fe3bf, 0.9, [-2, -2.6, 9.8], [0, Math.PI, 0]);       // low mint kicker
+  panel(20, 20, 0xe6e9e4, 0.75, [0, -5.9, 0], [-Math.PI / 2, 0, 0]);    // pale floor bounce
+  const pm = new THREE.PMREMGenerator(renderer);
+  const rt = pm.fromScene(env, 0.04);
+  pm.dispose();
+  env.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+  return rt;
+}
+
+/** string patch that fails loudly (→ host fallback to the 2D header) if the library shader changes */
+function patch(src, from, to) {
+  if (!src.includes(from)) throw new Error('[clinical] ParticleNumber shader changed: ' + from.slice(0, 40));
+  return src.replace(from, to);
+}
+
+/** ParticleNumber is additive-blended for dark stages (invisible on #f3f4f1). Re-shade it locally:
+    normal alpha blending, brand colours as “ink”, crisper dots; plus a second draw of the same
+    geometry projected along the key light onto the page plane = the number’s soft shadow. */
+function lightenParticles(pn, mobile) {
+  const pts = pn.object3d.children.find((c) => c.isPoints);
+  const mat = pts.material;
+  mat.vertexShader = patch(mat.vertexShader, 'mix(uB, vec3(0.75, 0.8, 1.0), 0.3)', 'mix(uB, vec3(0.42, 0.45, 0.52), 0.45)');
+  mat.fragmentShader = patch(mat.fragmentShader, 'float a = smoothstep(1.0, 0.0, d); a = a * a * 1.3;', 'float a = smoothstep(1.0, 0.45, d);');
+  mat.fragmentShader = patch(mat.fragmentShader, 'gl_FragColor = vec4(vCol * a * vAl * uOpacity, 1.0);', 'gl_FragColor = vec4(vCol, clamp(a * vAl * uOpacity, 0.0, 1.0));');
+  mat.blending = THREE.NormalBlending;
+  mat.needsUpdate = true;
+
+  const sm = mat.clone();
+  sm.uniforms.uLdir = { value: new THREE.Vector3(-LIGHT_DIR[0], -LIGHT_DIR[1], -LIGHT_DIR[2]).normalize() };
+  sm.uniforms.uWall = { value: -NUM_WALL };
+  sm.uniforms.uShade = { value: new THREE.Color(0x163d2e) };
+  sm.uniforms.uK = { value: mobile ? 0.034 : 0.024 };
+  sm.vertexShader = patch(sm.vertexShader, 'uniform float uAssemble', 'uniform vec3 uLdir; uniform float uWall;\n    uniform float uAssemble');
+  sm.vertexShader = patch(sm.vertexShader, 'vec4 mv = modelViewMatrix * vec4(p, 1.0);',
+    'vec4 wp = modelMatrix * vec4(p, 1.0); float dz = wp.z - uWall; wp.xyz -= uLdir * (dz / uLdir.z); vec4 mv = viewMatrix * wp;');
+  sm.vertexShader = patch(sm.vertexShader, 'gl_PointSize = uSize *', 'gl_PointSize = (6.0 + 7.0 * min(dz, 0.8)) * uSize *');
+  sm.vertexShader = patch(sm.vertexShader, '* (0.72 + 0.28 * sin(uTime * 3.0 + aRand.z * 50.0));', '* (0.72 + 0.28 * sin(uTime * 3.0 + aRand.z * 50.0)) * k * k;'); // only settled particles cast
+  sm.fragmentShader = patch(sm.fragmentShader, 'uniform float uOpacity;', 'uniform float uOpacity; uniform vec3 uShade; uniform float uK;');
+  sm.fragmentShader = patch(sm.fragmentShader, 'float a = smoothstep(1.0, 0.45, d);', 'float a = smoothstep(1.0, 0.0, d); a *= a;');
+  sm.fragmentShader = patch(sm.fragmentShader, 'gl_FragColor = vec4(vCol, clamp(a * vAl * uOpacity, 0.0, 1.0));', 'gl_FragColor = vec4(uShade, a * vAl * uOpacity * uK);');
+  // shadow draws a subset (edge-first ordering → the outline + some fill) through its own geometry that
+  // shares the GPU attribute buffers — the big blurred sprites are the expensive part (overdraw)
+  const sg = new THREE.BufferGeometry();
+  for (const k of Object.keys(pts.geometry.attributes)) sg.setAttribute(k, pts.geometry.getAttribute(k));
+  const n = pts.geometry.getAttribute('position').count;
+  sg.setDrawRange(0, Math.round(n * 0.55));
+  sm.uniforms.uK.value *= 1.5;
+  const shadow = new THREE.Points(sg, sm);
+  shadow.frustumCulled = false; shadow.renderOrder = -2;
+  const v2 = new THREE.Vector2();
+  shadow.onBeforeRender = (r, s, cam) => { r.getDrawingBufferSize(v2); sm.uniforms.uScale.value = v2.y * 0.5 * cam.projectionMatrix.elements[5]; };
+  return {
+    shadow,
+    sync() { for (const k of ['uAssemble', 'uTime', 'uOpacity']) sm.uniforms[k].value = mat.uniforms[k].value; },
+    dispose() { sm.dispose(); sg.dispose(); },
+  };
+}
+
+function initHero3D(root, ctx) {
+  const { ScrollTrigger, lib } = ctx;
+  if (!('WebGLRenderingContext' in window)) return; // 2D header stays as is
+  const hero = root.querySelector('.cl-hero');
+  const numEl = root.querySelector('.cl-hero-n');
+  const blEl = numEl.querySelector('.cl-bl');
+  const rowEl = root.querySelector('.cl-centers__row');
+  const figs = [...root.querySelectorAll('.cl-center')];
+  const seals = figs.map((f) => f.querySelector('.cl-seal'));
+  const caps = figs.map((f) => f.querySelector('figcaption'));
+  const hint = root.querySelector('.cl-hint');
+  const gl = document.createElement('div');
+  gl.className = 'cl-gl';
+  gl.setAttribute('aria-hidden', 'true');
+  root.insertBefore(gl, root.querySelector('.wrap'));
+  root.classList.add('is-3d');
+
+  const reduced = !!ctx.reduced;
+  const isMobile = () => window.innerWidth < 760;
+  // ---- logical state: lives outside the (disposable) WebGL state ----
+  const L = { ok: false, ver: 0 };
+  const st = {
+    enter: 0, leave: 0, coinsIn: 0, introAt: -1, coinsAt: -1,
+    px: 0, py: 0, spx: 0, spy: 0,                        // pointer (hero-normalised) + smoothed
+    drag: false, dx0: 0, dy0: 0, r0y: 0, r0x: 0, rotY: 0, rotX: 0, vY: 0, vX: 0, dragged: false,
+    hot: 0, hotT: 0, focus: null, labelsOn: [false, false, false, false], hintOn: false,
+  };
+
+  function measure() {
+    const sec = root.getBoundingClientRect();
+    const hb = hero.getBoundingClientRect();
+    // gl box = section top … hero bottom (+ margin). Computed, not read back: under reduced motion base.css gives
+    // every property a .01 ms transition, so a read-back right after the write returns the previous height.
+    const gh = Math.round(hb.bottom - sec.top + 60);
+    gl.style.height = gh + 'px';
+    const G = { left: sec.left, top: sec.top, width: sec.width, height: gh };
+    if (G.width < 50 || G.height < 50) return;
+    const F = parseFloat(getComputedStyle(numEl).fontSize) || 120;
+    const nr = numEl.getBoundingClientRect(), bl = blEl.getBoundingClientRect();
+    const cap = 0.7 * F;                                   // Montserrat cap height ≈ 0.70 em
+    L.W = G.width; L.H = G.height;
+    L.wpp = NUM_SIZE / cap;                                // world units per CSS px on the z = 0 plane
+    L.D = (L.wpp * L.H) / (2 * Math.tan((FOV / 2) * Math.PI / 180));
+    const toW = (x, y) => [(x - G.left - L.W / 2) * L.wpp, (L.H / 2 - (y - G.top)) * L.wpp];
+    [L.nx, L.ny] = toW(nr.left + nr.width / 2, bl.bottom - cap / 2);
+    const sr = seals.map((s) => s.getBoundingClientRect());
+    const cx = sr.map((r) => r.left + r.width / 2);
+    L.diam = sr[0].width;
+    L.spacing = (cx[1] - cx[0]) / L.diam;                  // in coin diameters (Medallions radius 0.5 → diameter 1)
+    [L.rx, L.ry] = toW((cx[0] + cx[3]) / 2, sr[0].top + sr[0].height / 2);
+    L.cs = L.diam * L.wpp;                                 // coin row scale
+    const rr = rowEl.getBoundingClientRect();
+    L.rowOff = [G.left - rr.left, G.top - rr.top];
+    L.heroOff = [G.left - hb.left, G.top - hb.top];
+    L.ok = true; L.ver++;
+    m?.invalidate();
+  }
+
+  // ---- scroll: entrance / exit progress drive the camera + the number's pose ----
+  ScrollTrigger.create({ trigger: hero, start: 'top bottom', end: 'top 10%', onUpdate: (s) => { st.enter = s.progress; }, onRefresh: (s) => { st.enter = s.progress; } });
+  ScrollTrigger.create({ trigger: hero, start: 'bottom 85%', end: 'bottom top', onUpdate: (s) => { st.leave = s.progress; }, onRefresh: (s) => { st.leave = s.progress; } });
+  ScrollTrigger.create({ trigger: rowEl, start: 'top bottom', end: 'top 55%', onUpdate: (s) => { st.coinsIn = s.progress; }, onRefresh: (s) => { st.coinsIn = s.progress; } });
+
+  // ---- pointer parallax over the whole header ----
+  hero.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') return;
+    const r = hero.getBoundingClientRect();
+    st.px = ((e.clientX - r.left) / r.width) * 2 - 1; st.py = -(((e.clientY - r.top) / r.height) * 2 - 1);
+  });
+  hero.addEventListener('pointerleave', () => { st.px = 0; st.py = 0; });
+  // ---- drag the number: it spins on its own axis, springs back on release ----
+  numEl.addEventListener('pointerdown', (e) => {
+    st.drag = true; st.dx0 = e.clientX; st.dy0 = e.clientY; st.r0y = st.rotY; st.r0x = st.rotX; st.vY = st.vX = 0;
+    numEl.setPointerCapture(e.pointerId); numEl.classList.add('is-grab');
+  });
+  numEl.addEventListener('pointermove', (e) => {
+    if (!st.drag) return;
+    st.rotY = Math.max(-1.05, Math.min(1.05, st.r0y + (e.clientX - st.dx0) * 0.008));
+    if (e.pointerType !== 'touch') st.rotX = Math.max(-0.6, Math.min(0.6, st.r0x + (e.clientY - st.dy0) * 0.006));
+    if (Math.abs(e.clientX - st.dx0) > 6 && !st.dragged) { st.dragged = true; hint.classList.add('is-gone'); }
+    m?.invalidate();
+  });
+  const release = () => { st.drag = false; numEl.classList.remove('is-grab'); };
+  numEl.addEventListener('pointerup', release);
+  numEl.addEventListener('pointercancel', release);
+  numEl.addEventListener('pointerenter', () => { st.hotT = 1; });
+  numEl.addEventListener('pointerleave', () => { st.hotT = 0; });
+  // ---- medallion focus: hover / tap / keyboard ----
+  figs.forEach((f, i) => {
+    f.tabIndex = 0;
+    f.addEventListener('pointerenter', (e) => { if (e.pointerType !== 'touch') { st.focus = i; m?.invalidate(); } });
+    f.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch' && st.focus === i) { st.focus = null; m?.invalidate(); } });
+    f.addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') return; st.focus = st.focus === i ? null : i; m?.invalidate(); });
+    f.addEventListener('focus', () => { if (f.matches(':focus-visible')) { st.focus = i; m?.invalidate(); } }); // keyboard only
+    f.addEventListener('blur', () => { if (st.focus === i) { st.focus = null; m?.invalidate(); } });
+  });
+
+  let m = null;
+  const loadImg = (src) => new Promise((res) => { const im = new Image(); im.decoding = 'async'; im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+  const fontsReady = () => (document.fonts ? Promise.all([document.fonts.load('600 40px Montserrat'), document.fonts.load('500 40px Montserrat'), document.fonts.load('300 40px Montserrat')]).catch(() => 0) : Promise.resolve());
+  Promise.all([fontsReady(), Promise.all([1, 2, 3, 4].map((i) => loadImg(`assets/img/center-${i}.webp`)))]).then(([, imgs]) => {
+    measure();
+    lib.onResize(measure);
+    new ResizeObserver(() => measure()).observe(hero);
+
+    const makeMedals = (spacing) => {
+      const md = createMedallions(THREE, { textures: imgs, spacing, curve: 0.1, accent: 0x2bae7e, rimColor: 0xe3e6ea });
+      md.object3d.traverse((o) => { if (o.isMesh) o.receiveShadow = false; }); // no self-shadowing on the coins
+      return md;
+    };
+    // host.mjs (library) re-creates its renderer on the SAME canvas after the far-dispose has called
+    // forceContextLoss() → the rebuild throws (lost context) and the header would drop to 2D. Work-around:
+    // retire the whole mount (→ fresh canvas) as soon as it goes far away, before the host's own far-dispose.
+    let everBuilt = false, retries = 0;
+    const retire = () => { m?.destroy(); m = mount3D(gl, opts); };
+    new IntersectionObserver((es) => { for (const e of es) if (!e.isIntersecting && everBuilt) { everBuilt = false; retire(); } }, { rootMargin: '150% 0px' }).observe(gl);
+    const opts = {
+      THREE, stageLib: precompileLib(S3), dpr: 1.5, margin: '60% 0px', farMargin: '180% 0px',
+      stageOpts: { fov: FOV, transparent: true, exposure: 1.05 },
+      fallback: () => setTimeout(() => {
+        if (everBuilt && retries++ < 2) { everBuilt = false; retire(); return; } // lost context on a reused canvas
+        m?.destroy(); m = null; root.classList.remove('is-3d'); gl.remove();   // no WebGL → the 2D header stays
+      }, 0),
+      build(stage) {
+        everBuilt = true; retries = 0;
+        const { renderer, scene, lights } = stage;
+        const envRT = lightEnv(renderer);
+        scene.environment = envRT.texture;
+        lights.fill.intensity = 0.55; lights.fill.color.set(0xffffff); lights.fill.groundColor.set(0xb9c2bc);
+        lights.rim.intensity = 1.1;
+        lights.key.intensity = 2.0;
+        // soft (VSM) shadows: only the coins cast, only the “page” plane behind them receives
+        renderer.shadowMap.type = THREE.VSMShadowMap;
+        lights.key.shadow.mapSize.set(512, 512);
+        lights.key.shadow.radius = 14; lights.key.shadow.blurSamples = 20;
+        lights.key.shadow.bias = -0.0005;
+        scene.add(lights.key.target);
+        // particle number (brand ink on the light page) + its projected soft shadow
+        const mobile = isMobile();
+        const pn = createParticleNumber(THREE, { text: String(ctx.data.study.n), count: mobile ? 3600 : 6200, size: NUM_SIZE, depth: 0.42, scatter: 2.9, pointSize: mobile ? 0.034 : 0.027, edge: 0.4, seed: 212, colors: [0x178a5e, 0x6a3fd8] });
+        const pshade = lightenParticles(pn, mobile);
+        const numG = new THREE.Group();
+        numG.add(pn.object3d, pshade.shadow);
+        // own anchors on the number (hint label, top-right of the glyphs)
+        const halfW = (pn.object3d.children.find((c) => c.isPoints).material.uniforms.uWidth.value) / 2;
+        const aHint = new THREE.Object3D(); aHint.position.set(halfW + 0.06, NUM_SIZE * 0.5, 0); pn.object3d.add(aHint);
+        scene.add(numG);
+        // medallions on a shadow-catching “page” plane
+        const rowG = new THREE.Group(); scene.add(rowG);
+        const med = makeMedals(L.spacing || 1.6); rowG.add(med.object3d);
+        const wall = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShadowMaterial({ color: 0x0f3325, opacity: 0.2, depthWrite: false }));
+        wall.receiveShadow = true; wall.renderOrder = -3; rowG.add(wall);
+        // “统一方案” rail: a satin rod threading behind the four coins + a jade bead travelling centre → centre
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 1, 20, 1).rotateZ(Math.PI / 2),
+          new THREE.MeshPhysicalMaterial({ color: 0xcfd6d2, metalness: 1, roughness: 0.3, clearcoat: 0.5 }));
+        rod.castShadow = true; rowG.add(rod);
+        const bead = new THREE.Mesh(new THREE.SphereGeometry(0.03, 24, 16), new THREE.MeshStandardMaterial({ color: 0x2bae7e, emissive: 0x2bae7e, emissiveIntensity: 0.9, roughness: 0.25, metalness: 0.1 }));
+        const glowTex = S3.glowTexture(THREE, 128);
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x43e6a8, transparent: true, opacity: 0.55, depthWrite: false }));
+        halo.scale.setScalar(0.22); bead.add(halo); rowG.add(bead);
+        return { pn, pshade, numG, aHint, rowG, med, medSpacing: L.spacing || 1.6, wall, rod, bead, halo, glowTex, envRT, still: -1 };
+      },
+      frame(s, stage, t, dt) { frame(s, stage, t, dt); },
+      dispose(s) {
+        s.pn.dispose(); s.pshade.dispose(); s.med.dispose(); s.envRT.dispose(); s.glowTex.dispose();
+        for (const o of [s.wall, s.rod, s.bead, s.halo]) { o.geometry?.dispose(); o.material.dispose(); }
+      },
+    };
+    m = mount3D(gl, opts);
+    function rebuildMedals(s) {
+      s.rowG.remove(s.med.object3d); s.med.dispose();
+      s.med = makeMedals(L.spacing); s.medSpacing = L.spacing; s.rowG.add(s.med.object3d);
+    }
+
+    const _v = new THREE.Vector3(), _pa = {}; // reused projection out-object (no per-frame allocation)
+    function frame(s, stage, t, dt) {
+      if (!L.ok) return;
+      const cv = stage.renderer.domElement, stillKey = `${L.ver}:${cv.width}x${cv.height}:${st.focus}`;
+      if (reduced && s.still === stillKey && !st.drag && Math.abs(st.rotY) + Math.abs(st.rotX) < 1e-3) return;
+      const now = performance.now() / 1000;
+      if (Math.abs(s.medSpacing - L.spacing) > 0.03) rebuildMedals(s);
+      // intro clocks (logical, survive a context rebuild)
+      if (st.introAt < 0 && st.enter > 0.3) st.introAt = now;
+      if (st.coinsAt < 0 && st.coinsIn > 0.3) st.coinsAt = now;
+      const k = dt > 0 ? 1 - Math.exp(-dt * 5) : 1;
+      st.spx += (st.px - st.spx) * k; st.spy += (st.py - st.spy) * k;
+      st.hot += (st.hotT - st.hot) * k;
+      if (!st.drag) {       // underdamped spring back to rest
+        const h = Math.min(dt, 0.033);
+        st.vY += (-38 * st.rotY - 7.5 * st.vY) * h; st.rotY += st.vY * h;
+        st.vX += (-38 * st.rotX - 7.5 * st.vX) * h; st.rotX += st.vX * h;
+        if (reduced || dt === 0) { st.rotY = 0; st.rotX = 0; st.vY = st.vX = 0; }
+      }
+      const e = reduced ? 1 : S3.smooth(st.enter), lv = reduced ? 0 : S3.ease.inOut(st.leave);
+      const tt = reduced ? 1.2 : t;
+      const assemble = reduced ? 1 : st.introAt < 0 ? 0 : clamp01((now - st.introAt) / 2.9) * (1 - 0.07 * st.hot - (st.drag ? 0.04 : 0));
+      const reveal = reduced ? 1 : st.coinsAt < 0 ? 0 : clamp01((now - st.coinsAt) / 2.8);
+
+      // number: slot-locked position; entrance swing + drag + pointer tilt
+      s.numG.position.set(L.nx, L.ny, 0);
+      s.numG.rotation.set(
+        st.rotX + 0.32 * (1 - e) - 0.22 * lv - st.spy * 0.08,
+        st.rotY - 0.62 * (1 - e) + 0.18 * lv + st.spx * 0.16 + (reduced ? 0 : 0.09 * Math.sin(tt * 0.42) * assemble),
+        0);
+      s.pn.update({ assemble, t: tt });
+      s.pshade.sync();
+      // medallions: slot-locked row, spin into place; shadow wall behind
+      s.rowG.position.set(L.rx, L.ry, 0);
+      s.rowG.scale.setScalar(L.cs);
+      s.med.update({ reveal, focus: st.focus, t: tt });
+      s.wall.scale.set(3 * L.spacing + 3, 2.6, 1); s.wall.position.set(0, -0.2, -COIN_WALL);
+      const span = 3 * L.spacing, grow = S3.ease.inOut(clamp01((reveal - 0.25) / 0.6));
+      s.rod.scale.set(Math.max(1e-3, span * grow), 1, 1); s.rod.position.set(0, 0, -0.14); s.rod.visible = grow > 0.001;
+      const ph = ((tt * 0.16) % 1 + 1) % 1, travel = reduced ? 0.5 : ph;                     // bead: one pass every ~6 s
+      s.bead.position.set((travel - 0.5) * span, 0, -0.14);
+      const fade = Math.min(1, Math.sin(Math.PI * travel) * 3) * grow;
+      s.bead.scale.setScalar(Math.max(1e-3, fade)); s.bead.visible = fade > 0.01 && !reduced;
+      const key = stage.lights.key;
+      _v.set(...LIGHT_DIR).normalize().multiplyScalar(10 * L.cs);
+      key.target.position.set(L.rx, L.ry, 0); key.position.set(L.rx + _v.x, L.ry + _v.y, _v.z);
+      const sc = key.shadow.camera, ext = ((3 * L.spacing + 1) / 2 + 0.8) * L.cs;
+      if (sc.right !== ext) { Object.assign(sc, { left: -ext, right: ext, top: 1.6 * L.cs, bottom: -1.6 * L.cs, near: 1, far: 20 * L.cs }); sc.updateProjectionMatrix(); }
+
+      // camera: rest = straight on (DOM-aligned); scroll swings it, pointer adds parallax.
+      // near/far follow the (large) solved distance — the stage default near 0.01 z-fights the coin faces.
+      const cam = stage.camera;
+      if (cam.far !== L.D * 3) { cam.near = L.D * 0.35; cam.far = L.D * 3; cam.updateProjectionMatrix(); }
+      stage.orbit({
+        target: [0, 0, 0], radius: L.D,
+        azimuth: -0.1 * (1 - e) + 0.06 * lv + st.spx * 0.035,
+        elevation: 0.1 * (1 - e) - 0.09 * lv + st.spy * 0.025,
+      });
+      stage.render();
+      s.still = stillKey;
+
+      // DOM overlays from anchors
+      for (let i = 0; i < 4; i++) {
+        const a = projectAnchor(THREE, s.med.anchors['coin' + i], stage.camera, L.W, L.H, _pa);
+        caps[i].style.transform = `translate3d(${(a.x + L.rowOff[0]).toFixed(1)}px, ${(a.y + L.rowOff[1]).toFixed(1)}px, 0) translateX(-50%)`;
+        if (a.visible !== st.labelsOn[i]) { st.labelsOn[i] = a.visible; caps[i].classList.toggle('is-on', a.visible); }
+      }
+      const h = projectAnchor(THREE, s.aHint, stage.camera, L.W, L.H, _pa);
+      hint.style.transform = `translate3d(${(h.x + L.heroOff[0]).toFixed(1)}px, ${(h.y + L.heroOff[1]).toFixed(1)}px, 0)`;
+      const hv = assemble > 0.95 && !st.dragged;
+      if (hv !== st.hintOn) { st.hintOn = hv; hint.classList.toggle('is-on', hv); }
+    }
   });
 }
 

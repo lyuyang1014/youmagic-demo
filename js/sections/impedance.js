@@ -6,6 +6,54 @@
 //      IFU p.30 射频能量 6.78 MHz ± 3%；阻抗测量 75–350 Ω ± 20%
 //      IFU p.31 额定负载 100–250 Ω；图12 负载与功率关系（data.loadCurve）
 //      IFU p.32 图13 能量设置与功率关系（0.5 → 25 W … 8 → 175 W，每 0.5 档 +10 W）
+// 3D: 图12 is a YM3D createLoadCurve3D scene (one WebGL context via mount3D); the impedance cursor, its intro sweep
+// and the live-demo shots drive `ohm`. Readouts stay in the DOM.
+
+import * as THREE from 'three';
+import * as S3 from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createLoadCurve3D, projectAnchor } from '../ym3d/dataviz.mjs';
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built well before they enter the viewport, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
+
+/* host.mjs work-around (library issue, reported by integration QA): when a mount goes far off-screen the host calls
+   renderer.forceContextLoss() and on the way back rebuilds on the SAME canvas, whose context is still lost → createStage
+   throws ("reading 'precision'") and the fallback fires for good. Each build therefore renders into a fresh sibling canvas
+   under the host's own canvas, which stays on top (context-less, transparent) as the pointer / drag layer. */
+const freshStageLib = (YM) => ({
+  ...YM,
+  createStage(THREE_, canvas, opts) {
+    canvas.__ymRC?.remove();
+    const c = document.createElement('canvas');
+    c.className = 'ym3d-rc';
+    c.setAttribute('aria-hidden', 'true');
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;';
+    canvas.parentNode.insertBefore(c, canvas);
+    canvas.__ymRC = c;
+    return YM.createStage(THREE_, c, opts);
+  },
+});
+
+/** YM3D fx/halo materials use AdditiveBlending with alpha = 1, which also ADDS alpha: on a transparent stage every
+    glow quad becomes an opaque dark square. Re-map them to add colour only (alpha untouched). */
+function additiveKeepsAlpha(THREE, root) {
+  root.traverse((o) => {
+    for (const m of [].concat(o.material || [])) {
+      if (m.blending !== THREE.AdditiveBlending) continue;
+      Object.assign(m, { blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor, blendEquationAlpha: THREE.AddEquation, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor });
+      m.needsUpdate = true;
+    }
+  });
+}
 
 const C = { mint: '#43e6a8', violet: '#8a5cf0', lilac: '#b79bff', warn: '#f0603f', text: '#eceaf4', t2: '#a9a6ba', t3: '#6f6c82', line: 'rgba(255,255,255,0.08)', line2: 'rgba(255,255,255,0.16)' };
 const R_REF = 150;           // 对比示意：恒压输出在 150 Ω 时与设定功率相等（假设）
@@ -23,7 +71,7 @@ export default {
   id: 'impedance',
   nav: 'AI 能量匹配',
   async init(root, ctx) {
-    const { gsap, lib, data, reduced } = ctx;
+    const { gsap, ScrollTrigger, lib, data, reduced } = ctx;
     const LC = data.loadCurve;
     const PSET = { full: 175, half: 95 };
     const S = { mode: 'full', cmp: false, playing: !reduced, R: 162, cursor: 180, shot: 0, lv: 12 };
@@ -52,6 +100,29 @@ export default {
         </div>
 
         <div class="imp-main">
+          <figure class="imp-chart imp-chart--3d card" data-reveal>
+            <figcaption class="imp-chart__cap">
+              <span class="imp-chart__t">负载与功率关系 <small class="imp-chart__3d">3D</small></span>
+              <span class="tag-src">说明书 第 31 页 图12</span>
+            </figcaption>
+            <div class="imp-3d" tabindex="0" role="slider" aria-label="负载游标（三维负载与功率关系图）：左右方向键移动" aria-valuemin="75" aria-valuemax="350" aria-valuenow="180">
+              <div class="imp-lbls" aria-hidden="true">
+                <span class="imp-lb imp-lb--mk" data-a="marker"></span>
+                <span class="imp-lb imp-lb--band" data-a="band">额定负载 100–250 Ω · 全功率 175 W</span>
+                <span class="imp-lb imp-lb--half" data-a="half">半功率 95 W</span>
+                <span class="imp-lb imp-lb--cmp" data-a="cmp">恒压 P = V² / R<em>原理示意</em></span>
+              </div>
+              <button type="button" class="imp-follow" aria-pressed="true"><i aria-hidden="true"></i><span>游标跟随实时阻抗</span></button>
+            </div>
+            <div class="imp-read" aria-live="polite">
+              <div class="imp-read__i"><span class="imp-read__k">负载</span><span class="imp-read__v num" data-c="r">180</span><span class="imp-read__u">Ω</span><span class="imp-read__s" data-c="rs"></span></div>
+              <div class="imp-read__i"><span class="imp-read__k"><i class="sw sw--full"></i>全功率</span><span class="imp-read__v num" data-c="f">175</span><span class="imp-read__u">W</span></div>
+              <div class="imp-read__i"><span class="imp-read__k"><i class="sw sw--half"></i>半功率</span><span class="imp-read__v num" data-c="h">95</span><span class="imp-read__u">W</span></div>
+              <div class="imp-read__i imp-read__i--cmp"><span class="imp-read__k"><i class="sw sw--cmp"></i>恒压（示意）</span><span class="imp-read__v num" data-c="g">—</span><span class="imp-read__u">W</span></div>
+            </div>
+            <p class="micro imp-hint">在图中左右拖动（或聚焦后用 ← →）移动负载游标；拖动图外区域可旋转视角。数据点之间为线性连接，“≈” 表示插值读数；每个亮点是实时演示中的一发（原理示意）。</p>
+          </figure>
+
           <div class="imp-live card" data-reveal>
             <div class="imp-live__head"><span class="imp-dot" aria-hidden="true"></span>实时匹配演示<span class="imp-tag">原理示意</span></div>
             <div class="imp-live__grid">
@@ -87,20 +158,6 @@ export default {
             </div>
           </div>
 
-          <figure class="imp-chart card" data-reveal>
-            <figcaption class="imp-chart__cap">
-              <span class="imp-chart__t">负载与功率关系</span>
-              <span class="tag-src">说明书 第 31 页 图12</span>
-            </figcaption>
-            <svg class="imp-svg viz" viewBox="0 0 600 404" role="img" aria-label="负载与功率关系图：全功率在 100–250 Ω 保持 175 W，75 Ω 为 140 W，300 Ω 为 150 W，350 Ω 为 130 W；半功率在 75–350 Ω 保持 95 W。"></svg>
-            <div class="imp-read" aria-live="polite">
-              <div class="imp-read__i"><span class="imp-read__k">负载</span><span class="imp-read__v num" data-c="r">180</span><span class="imp-read__u">Ω</span><span class="imp-read__s" data-c="rs"></span></div>
-              <div class="imp-read__i"><span class="imp-read__k"><i class="sw sw--full"></i>全功率</span><span class="imp-read__v num" data-c="f">175</span><span class="imp-read__u">W</span></div>
-              <div class="imp-read__i"><span class="imp-read__k"><i class="sw sw--half"></i>半功率</span><span class="imp-read__v num" data-c="h">95</span><span class="imp-read__u">W</span></div>
-              <div class="imp-read__i imp-read__i--cmp"><span class="imp-read__k"><i class="sw sw--cmp"></i>恒压（示意）</span><span class="imp-read__v num" data-c="g">—</span><span class="imp-read__u">W</span></div>
-            </div>
-            <p class="micro imp-hint">拖动游标（或聚焦后用 ← →）查看任意负载下的输出功率；数据点之间为线性连接，“≈” 表示插值读数。</p>
-          </figure>
         </div>
 
         <div class="imp-row2">
@@ -144,6 +201,7 @@ export default {
       </div>`;
 
     const $ = (s) => root.querySelector(s);
+    const S_ = (tag, a, p) => lib.svg(tag, a, p);
     const el = {
       r: $('[data-r]'), w: $('[data-w]'), set: $('[data-set]'), g: $('[data-g]'), count: $('.imp-count b'),
       meterMk: $('.imp-meter__mk'), live: $('.imp-live'), ghost: $('.imp-ghost'),
@@ -151,143 +209,242 @@ export default {
       rd: { r: $('[data-c="r"]'), rs: $('[data-c="rs"]'), f: $('[data-c="f"]'), h: $('[data-c="h"]'), g: $('[data-c="g"]') },
     };
 
-    /* =============== 图12 chart =============== */
-    const svgEl = $('.imp-svg');
-    const G = { l: 46, r: 18, t: 30, b: 64, W: 600, H: 404, x0: 58, x1: 367, yMax: 225 };
-    const X = (r) => G.l + ((r - G.x0) / (G.x1 - G.x0)) * (G.W - G.l - G.r);
-    const Y = (p) => G.H - G.b - (p / G.yMax) * (G.H - G.t - G.b);
-    const Rof = (x) => G.x0 + ((x - G.l) / (G.W - G.l - G.r)) * (G.x1 - G.x0);
-    const S_ = (tag, a, p) => lib.svg(tag, a, p);
-    (function buildChart() {
-      const defs = S_('defs', {}, svgEl);
-      defs.innerHTML = `
-        <clipPath id="imp-clip"><rect x="${G.l}" y="${G.t - 6}" width="${G.W - G.l - G.r}" height="${G.H - G.t - G.b + 6}"/></clipPath>
-        <linearGradient id="imp-band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${C.mint}" stop-opacity=".10"/><stop offset="1" stop-color="${C.mint}" stop-opacity=".02"/></linearGradient>
-        <filter id="imp-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
-      const gGrid = S_('g', { class: 'axis' }, svgEl);
-      for (let p = 0; p <= 200; p += 25) {
-        S_('line', { x1: G.l, x2: G.W - G.r, y1: Y(p), y2: Y(p), class: p % 50 ? 'gridline gridline--minor' : 'gridline' }, gGrid);
-        if (p % 50 === 0) S_('text', { x: G.l - 8, y: Y(p) + 4, 'text-anchor': 'end' }, gGrid).textContent = p;
-      }
-      LC.load.forEach((r) => {
-        S_('line', { x1: X(r), x2: X(r), y1: G.H - G.b, y2: G.H - G.b + 5, stroke: 'rgba(255,255,255,.25)' }, gGrid);
-        S_('text', { x: X(r), y: G.H - G.b + 20, 'text-anchor': 'middle' }, gGrid).textContent = r;
-      });
-      S_('line', { x1: G.l, x2: G.W - G.r, y1: Y(0), y2: Y(0), stroke: 'rgba(255,255,255,.25)' }, gGrid);
-      S_('text', { x: G.l - 8, y: G.t - 14, 'text-anchor': 'start', class: 'imp-axlab' }, gGrid).textContent = '输出功率 (W)';
-      S_('text', { x: G.W - G.r + 2, y: G.H - G.b + 20, 'text-anchor': 'start', class: 'imp-axlab' }, gGrid).textContent = 'Ω';
-      // rated load band
-      S_('rect', { x: X(100), y: G.t - 6, width: X(250) - X(100), height: Y(0) - G.t + 6, fill: 'url(#imp-band)', class: 'imp-band' }, svgEl);
-      S_('line', { x1: X(100), x2: X(100), y1: G.t - 6, y2: Y(0), class: 'imp-band-edge' }, svgEl);
-      S_('line', { x1: X(250), x2: X(250), y1: G.t - 6, y2: Y(0), class: 'imp-band-edge' }, svgEl);
-      S_('text', { x: (X(100) + X(250)) / 2, y: G.t + 10, 'text-anchor': 'middle', class: 'imp-band-t' }, svgEl).textContent = '额定负载 100–250 Ω';
-      // measurement range bracket
-      const by = G.H - 20;
-      S_('path', { d: `M${X(75)} ${by - 5}V${by}H${X(350)}V${by - 5}`, class: 'imp-bracket' }, svgEl);
-      S_('text', { x: (X(75) + X(350)) / 2, y: by + 16, 'text-anchor': 'middle', class: 'imp-bracket-t' }, svgEl).textContent = '阻抗测量范围 75–350 Ω ± 20%';
-    })();
+    /* =============== 图12 — 3D load curve (YM3D createLoadCurve3D · one WebGL context via mount3D) ===============
+       The impedance cursor (drag / keys / intro sweep) and — while “跟随实时阻抗” is on — every live-demo shot drive
+       the component's `ohm`. Each shot also drops a bead onto the matched curve (原理示意); with 对比 on, a dashed
+       P = V²/R curve (假设 150 Ω 时与设定功率相等) and the per-shot error are drawn beside it. */
+    const stageEl = $('.imp-3d'), followBtn = $('.imp-follow');
+    const LBL = [...stageEl.querySelectorAll('.imp-lb')].map((n) => ({ el: n, a: n.dataset.a, out: {}, on: false }));
+    const WD = 3.8, HC = 1.9, WMAX = 200, YCAP = 214, NB = 12; // createLoadCurve3D defaults (width, height, wMax)
+    const X3 = (r) => -WD / 2 + ((r - LC.load[0]) / (LC.load[LC.load.length - 1] - LC.load[0])) * WD, Y3 = (w) => (w / WMAX) * HC;
+    const V3 = { rev: reduced ? 1 : 0, revT: reduced ? 1 : 0, cam: reduced ? 1 : 0, camT: reduced ? 1 : 0, px: 0, py: 0, az: 0, el: 0, cmpA: 0, cmpRev: 1, swept: reduced, sig: '', w: 0, h: 0 };
+    const beads = []; // { R, pm, pc, cmp, t0 }
+    S.follow = true; S.cursorF = S.cursor;
 
-    const gCurves = S_('g', { 'clip-path': 'url(#imp-clip)' }, svgEl);
-    const pts = (arr) => LC.load.map((r, i) => `${X(r)},${Y(arr[i])}`).join(' ');
-    // comparison curve (P = V²/R)
-    const cmpPath = S_('path', { class: 'imp-c imp-c--cmp', d: '' }, gCurves);
-    const half = S_('polyline', { class: 'imp-c imp-c--half', points: pts(LC.half) }, gCurves);
-    const full = S_('polyline', { class: 'imp-c imp-c--full', points: pts(LC.full) }, gCurves);
-    const dotsG = S_('g', {}, svgEl);
-    const mkDots = (arr, cls) => LC.load.map((r, i) => S_('circle', { cx: X(r), cy: Y(arr[i]), r: 4.2, class: `imp-pt ${cls}` }, dotsG));
-    const fullDots = mkDots(LC.full, 'imp-pt--full');
-    const halfDots = mkDots(LC.half, 'imp-pt--half');
-    const valLabels = S_('g', { class: 'imp-vlab' }, svgEl);
-    LC.load.forEach((r, i) => {
-      const first = i === 0; // 75 Ω: label above-left so the rising segment to 100 Ω doesn't run through it
-      S_('text', { x: X(r) + (first ? 4 : 0), y: Y(LC.full[i]) - (first ? 10 : 12), 'text-anchor': first ? 'end' : 'middle', class: 'imp-vl imp-vl--full' }, valLabels).textContent = LC.full[i];
-    });
-    S_('text', { x: X(350) + 6, y: Y(95) - 10, 'text-anchor': 'end', class: 'imp-vl imp-vl--half' }, valLabels).textContent = '95';
-    const cmpLab = S_('text', { class: 'imp-cmp-lab', x: 0, y: G.t - 14, 'text-anchor': 'start' }, svgEl);
-    const shotsG = S_('g', { class: 'imp-shots' }, svgEl);
-    // cursor
-    const cur = S_('g', { class: 'imp-cur', tabindex: '0', role: 'slider', 'aria-label': '负载游标', 'aria-valuemin': '75', 'aria-valuemax': '350' }, svgEl);
-    const curLine = S_('line', { y1: G.t - 6, y2: Y(0), class: 'imp-cur__l' }, cur);
-    const curFull = S_('circle', { r: 6, class: 'imp-cur__p imp-cur__p--full' }, cur);
-    const curHalf = S_('circle', { r: 5, class: 'imp-cur__p imp-cur__p--half' }, cur);
-    const curCmp = S_('circle', { r: 5, class: 'imp-cur__p imp-cur__p--cmp' }, cur);
-    const curTagG = S_('g', { class: 'imp-cur__tag' }, cur);
-    const curTagR = S_('rect', { x: -30, y: 0, width: 60, height: 22, rx: 11 }, curTagG); void curTagR;
-    const curTagT = S_('text', { x: 0, y: 15, 'text-anchor': 'middle' }, curTagG);
-    const knob = S_('g', { class: 'imp-cur__knob' }, cur);
-    S_('circle', { r: 11 }, knob);
-    S_('path', { d: 'M-3 -4v8M0 -4v8M3 -4v8' }, knob);
-
-    let kChart = 1;
-    function drawCmpCurve() {
-      let d = '';
-      for (let r = 60; r <= 368; r += 2) { const p = cvAt(r); d += `${d ? 'L' : 'M'}${X(r).toFixed(1)} ${Y(Math.min(p, G.yMax + 40)).toFixed(1)}`; }
-      cmpPath.setAttribute('d', d);
-      const p100 = cvAt(100), p350 = cvAt(350);
-      cmpLab.setAttribute('x', G.l + 92);
-      cmpLab.textContent = `恒压（示意）：100 Ω → ${Math.round(p100)} W${p100 > G.yMax ? '（超出坐标）' : ''} · 350 Ω → ${Math.round(p350)} W`;
-    }
-
-    function setCursor(r, fromUser) {
-      r = Math.round(cl(r, 75, 350));
-      S.cursor = r;
-      const x = X(r);
-      curLine.setAttribute('x1', x); curLine.setAttribute('x2', x);
-      const pf = fullAt(r), ph = halfAt(r), pc = cvAt(r);
-      curFull.setAttribute('cx', x); curFull.setAttribute('cy', Y(pf));
-      curHalf.setAttribute('cx', x); curHalf.setAttribute('cy', Y(ph));
-      curCmp.setAttribute('cx', x); curCmp.setAttribute('cy', Y(Math.min(pc, G.yMax)));
-      knob.setAttribute('transform', `translate(${x} ${Y(0)}) scale(${Math.min(1.6, kChart)})`);
-      curTagT.textContent = `${r} Ω`;
-      const tx = cl(x, G.l + 32 * kChart, G.W - G.r - 32 * kChart);
-      curTagG.setAttribute('transform', `translate(${tx} ${Y(0) + 14 + 8 * kChart}) scale(${kChart})`);
-      cur.setAttribute('aria-valuenow', String(r));
-      cur.setAttribute('aria-valuetext', `${r} 欧姆，全功率 ${fmtP(r, LC.full)} 瓦`);
-      const inBand = r >= 100 && r <= 250;
-      el.rd.r.textContent = r;
-      el.rd.rs.textContent = inBand ? '额定负载内' : '额定负载外';
-      el.rd.rs.classList.toggle('is-out', !inBand);
-      el.rd.f.textContent = fmtP(r, LC.full);
-      el.rd.h.textContent = fmtP(r, LC.half);
-      el.rd.g.textContent = Math.round(pc);
-      if (fromUser) root.style.setProperty('--imp-cur', '1');
-    }
     function fmtP(r, arr) {
       const v = interp(LC.load, arr, r);
       const i = LC.load.findIndex((x) => x >= r);
       const exact = LC.load.includes(r) || (i > 0 && arr[i] === arr[i - 1]);
       return (exact ? '' : '≈') + Math.round(v);
     }
-    // dragging
-    const toR = (e) => {
-      const pt = svgEl.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
-      const p = pt.matrixTransform(svgEl.getScreenCTM().inverse());
-      return Rof(p.x);
+    function setCursor(r, fromUser) {
+      S.cursorF = cl(r, 75, 350);
+      r = Math.round(S.cursorF);
+      S.cursor = r;
+      const pc = cvAt(r), inBand = r >= 100 && r <= 250;
+      stageEl.setAttribute('aria-valuenow', String(r));
+      stageEl.setAttribute('aria-valuetext', `${r} 欧姆，全功率 ${fmtP(r, LC.full)} 瓦，半功率 ${fmtP(r, LC.half)} 瓦`);
+      el.rd.r.textContent = r;
+      el.rd.rs.textContent = inBand ? '额定负载内' : '额定负载外';
+      el.rd.rs.classList.toggle('is-out', !inBand);
+      el.rd.f.textContent = fmtP(r, LC.full);
+      el.rd.h.textContent = fmtP(r, LC.half);
+      el.rd.g.textContent = Math.round(pc);
+      if (fromUser) { root.style.setProperty('--imp-cur', '1'); if (S.follow) setFollow(false); curTw?.kill(); }
+    }
+    let curTw = null;
+    const tweenCursor = (r) => {
+      curTw?.kill();
+      if (reduced) { setCursor(r); return; }
+      const o = { r: S.cursorF };
+      curTw = gsap.to(o, { r, duration: 0.7, ease: 'power3.inOut', onUpdate: () => setCursor(o.r) });
     };
-    let dragging = false;
-    svgEl.addEventListener('pointerdown', (e) => { dragging = true; svgEl.setPointerCapture(e.pointerId); setCursor(toR(e), true); cur.focus({ preventScroll: true }); });
-    svgEl.addEventListener('pointermove', (e) => { if (dragging) setCursor(toR(e), true); });
-    const end = () => { dragging = false; };
-    svgEl.addEventListener('pointerup', end); svgEl.addEventListener('pointercancel', end);
-    cur.addEventListener('keydown', (e) => {
+    function setFollow(on) {
+      S.follow = on;
+      followBtn.setAttribute('aria-pressed', String(on));
+      if (on && hist.length) tweenCursor(hist[hist.length - 1].R);
+    }
+    followBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    followBtn.addEventListener('click', () => setFollow(!S.follow));
+
+    // live-demo shot → bead on the curve (+ follow)
+    function chartShot(r) {
+      beads.push({ R: r, pm: matchedAt(r), pc: cvAt(r), cmp: S.cmp, half: S.mode === 'half', t0: performance.now() / 1000 });
+      while (beads.length > NB) beads.shift();
+      if (S.follow && V3.swept) tweenCursor(r);
+    }
+
+    /* ---- pointer: drag inside the chart moves the cursor; drag outside orbits ---- */
+    const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), zPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), hitP = new THREE.Vector3();
+    const planeX = (e) => {
+      const st = m3?.stage; if (!st) return null;
+      const r = stageEl.getBoundingClientRect();
+      ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
+      ray.setFromCamera(ndc, st.camera);
+      return ray.ray.intersectPlane(zPlane, hitP) ? hitP : null;
+    };
+    const inChart = (p) => p && p.x > -WD / 2 - 0.3 && p.x < WD / 2 + 0.3 && p.y > -0.2 && p.y < HC + 0.5;
+    const ohmAt = (p) => 75 + ((p.x + WD / 2) / WD) * 275;
+    let drag = null;
+    stageEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const p = planeX(e);
+      drag = { mode: inChart(p) ? 'cursor' : 'orbit', x: e.clientX, y: e.clientY };
+      try { stageEl.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ }
+      if (drag.mode === 'cursor') { setCursor(ohmAt(p), true); stageEl.focus({ preventScroll: true }); }
+      stageEl.classList.add(drag.mode === 'cursor' ? 'is-cur' : 'is-orbit');
+    });
+    stageEl.addEventListener('pointermove', (e) => {
+      const r = stageEl.getBoundingClientRect();
+      V3.pxT = ((e.clientX - r.left) / r.width) * 2 - 1; V3.pyT = -(((e.clientY - r.top) / r.height) * 2 - 1);
+      if (!drag) { stageEl.classList.toggle('is-over', inChart(planeX(e))); return; }
+      if (drag.mode === 'cursor') { const p = planeX(e); if (p) setCursor(ohmAt(p), true); }
+      else { V3.az = cl(V3.az - (e.clientX - drag.x) * 0.0045, -1.1, 1.1); V3.el = cl(V3.el + (e.clientY - drag.y) * 0.0035, -0.25, 0.6); drag.x = e.clientX; drag.y = e.clientY; }
+    });
+    const endDrag = () => { drag = null; stageEl.classList.remove('is-cur', 'is-orbit'); };
+    stageEl.addEventListener('pointerup', endDrag); stageEl.addEventListener('pointercancel', endDrag);
+    stageEl.addEventListener('pointerleave', () => { V3.pxT = 0; V3.pyT = 0; });
+    stageEl.addEventListener('keydown', (e) => {
       const d = { ArrowLeft: -5, ArrowDown: -5, ArrowRight: 5, ArrowUp: 5, PageDown: -25, PageUp: 25 }[e.key];
       if (e.key === 'Home') { setCursor(75, true); e.preventDefault(); }
       else if (e.key === 'End') { setCursor(350, true); e.preventDefault(); }
       else if (d) { setCursor(S.cursor + d, true); e.preventDefault(); }
     });
 
-    // shot markers on the chart
-    function chartShot(r) {
-      const pm = matchedAt(r), pc = cvAt(r);
-      const g = S_('g', { class: 'imp-shot' }, shotsG);
-      if (S.cmp) {
-        S_('line', { x1: X(r), x2: X(r), y1: Y(pm), y2: Y(Math.min(pc, G.yMax)), class: 'imp-shot__err' }, g);
-        S_('circle', { cx: X(r), cy: Y(Math.min(pc, G.yMax)), r: 4, class: 'imp-shot__g' }, g);
+    /* ---- the scene ---- */
+    let m3 = null;
+    const I0 = { target: [-0.2, 0.55, 0], radius: 9.4, azimuth: -1.05, elevation: 0.62 };
+    const oc = { target: [0, 0, 0], radius: 1, azimuth: 0, elevation: 0 };
+    const _c = new THREE.Color(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
+    function build3(stage) {
+      const comp = createLoadCurve3D(THREE, { load: LC.load, full: LC.full, half: LC.half, rated: [100, 250] });
+      stage.scene.add(comp.object3d);
+      const k = stage.lights.key; Object.assign(k.shadow.camera, { left: -3.4, right: 3.4, top: 3.4, bottom: -3.4 }); k.shadow.camera.updateProjectionMatrix();
+      const extra = new THREE.Group(); stage.scene.add(extra);
+      // 对比：恒压 P = V²/R (dashed tube, clipped at the top of the chart box)
+      const mkCmp = (pset) => {
+        const r0 = Math.max(75, (pset * R_REF) / YCAP), pts = [];
+        for (let i = 0; i <= 90; i++) { const r = r0 + ((350 - r0) * i) / 90; pts.push(new THREE.Vector3(X3(r), Y3((pset * R_REF) / r), 0.2)); }
+        const u = { uRev: { value: 1 }, uOp: { value: 1 } };
+        const mat = new THREE.ShaderMaterial({
+          uniforms: u, transparent: true, depthWrite: false, toneMapped: false,
+          vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+          fragmentShader: 'uniform float uRev; uniform float uOp; varying vec2 vUv; void main(){ if (vUv.x > uRev || fract(vUv.x * 44.0) > 0.56) discard; gl_FragColor = vec4(1.0, 0.47, 0.32, uOp); }',
+        });
+        const mesh = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 220, 0.014, 8, false), mat);
+        mesh.renderOrder = 8; mesh.visible = false; extra.add(mesh);
+        return { mesh, u, r0, top: new THREE.Vector3(X3(r0), Y3((pset * R_REF) / r0), 0.2) };
+      };
+      const cmp = { full: mkCmp(PSET.full), half: mkCmp(PSET.half) };
+      const ringGeo = new THREE.TorusGeometry(0.08, 0.009, 8, 56);
+      const cmpRing = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xff7a55, toneMapped: false, transparent: true })); extra.add(cmpRing);
+      const cmpStem = new THREE.Mesh(new THREE.BoxGeometry(0.008, 1, 0.008), new THREE.MeshBasicMaterial({ color: 0xff7a55, toneMapped: false, transparent: true, opacity: 0.55 })); extra.add(cmpStem);
+      // 半功率 marker (the component's marker always rides the full-power curve)
+      const halfDot = new THREE.Mesh(new THREE.SphereGeometry(0.05, 24, 16), new THREE.MeshBasicMaterial({ color: 0xd9ccff, toneMapped: false })); extra.add(halfDot);
+      const halfRing = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.007, 8, 64), new THREE.MeshBasicMaterial({ color: 0xb79bff, toneMapped: false, transparent: true })); extra.add(halfRing);
+      // shot beads: glowing points + cores; compare error stems
+      const bPos = new Float32Array(NB * 2 * 3), bCol = new Float32Array(NB * 2 * 3);
+      const bGeo = new THREE.BufferGeometry();
+      bGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3).setUsage(THREE.DynamicDrawUsage));
+      bGeo.setAttribute('color', new THREE.BufferAttribute(bCol, 3).setUsage(THREE.DynamicDrawUsage));
+      const glowTex = S3.glowTexture(THREE, 128);
+      const bPts = new THREE.Points(bGeo, new THREE.PointsMaterial({ size: 0.56, map: glowTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, sizeAttenuation: true }));
+      bPts.frustumCulled = false; bPts.renderOrder = 9; extra.add(bPts);
+      const cores = new THREE.InstancedMesh(new THREE.SphereGeometry(0.04, 18, 12), new THREE.MeshBasicMaterial({ toneMapped: false }), NB * 2);
+      cores.frustumCulled = false; extra.add(cores);
+      for (let i = 0; i < NB * 2; i++) cores.setColorAt(i, _c.set(0xffffff));
+      const errs = new THREE.InstancedMesh(new THREE.BoxGeometry(0.007, 1, 0.007), new THREE.MeshBasicMaterial({ color: 0xff7a55, toneMapped: false, transparent: true, opacity: 0.6 }), NB);
+      errs.frustumCulled = false; extra.add(errs);
+      additiveKeepsAlpha(THREE, comp.object3d); additiveKeepsAlpha(THREE, extra);
+      V3.sig = '';
+      return { comp, extra, cmp, cmpRing, cmpStem, halfDot, halfRing, bPts, bPos, bCol, cores, errs, glowTex };
+    }
+    const mint3 = new THREE.Color(C.mint), lilac3 = new THREE.Color(C.lilac), warn3 = new THREE.Color(0xff7a55);
+    function frame3(s, stage, t, dt) {
+      const cv = stage.renderer.domElement, w = cv.clientWidth, h = cv.clientHeight;
+      const now = performance.now() / 1000;
+      if (reduced) { // a single still per state change
+        const sg = `${w}x${h}|${S.cursorF.toFixed(2)}|${S.mode}|${S.cmp}|${beads.length}:${beads.length ? beads[beads.length - 1].t0 : 0}|${V3.az.toFixed(3)},${V3.el.toFixed(3)}`;
+        if (sg === V3.sig) return; V3.sig = sg;
       }
-      S_('circle', { cx: X(r), cy: Y(pm), r: 5, class: 'imp-shot__m' }, g);
-      gsap.fromTo(g, { opacity: 1 }, { opacity: 0, duration: 5.5, ease: 'power1.in', delay: 0.6, onComplete: () => g.remove() });
-      gsap.from(g.querySelectorAll('circle'), { attr: { r: 0 }, duration: 0.5, ease: 'back.out(3)' });
-      while (shotsG.childNodes.length > 14) shotsG.firstChild.remove();
+      const k4 = reduced ? 1 : 1 - Math.exp(-dt * 4);
+      V3.rev += (V3.revT - V3.rev) * k4; V3.cam += (V3.camT - V3.cam) * (reduced ? 1 : 1 - Math.exp(-dt * 3));
+      if (!V3.swept && V3.rev > 0.985) { V3.swept = true; if (!root.style.getPropertyValue('--imp-cur')) sweepCursor(); }
+      const rv = V3.rev, { comp } = s, half = S.mode === 'half';
+      comp.update({ t: reduced ? 0 : t, reveal: rv, ohm: S.cursorF, half: half ? 1 : 0.55, band: 1, cursor: 1, labels: 1 });
+
+      // compare curve + ghost marker
+      V3.cmpA += ((S.cmp ? 1 : 0) - V3.cmpA) * (reduced ? 1 : 1 - Math.exp(-dt * 6));
+      if (S.cmp && V3.cmpRev < 1) V3.cmpRev = reduced ? 1 : Math.min(1, V3.cmpRev + dt / 1.1);
+      const cmpOn = V3.cmpA > 0.01 && rv > 0.95;
+      for (const key of ['full', 'half']) { const c = s.cmp[key]; c.mesh.visible = cmpOn && (key === 'half') === half; c.u.uOp.value = V3.cmpA; c.u.uRev.value = V3.cmpRev; }
+      const pc = cvAt(S.cursorF), yc = Y3(Math.min(pc, YCAP)), xc = X3(S.cursorF), pm = matchedAt(S.cursorF);
+      s.cmpRing.visible = s.cmpStem.visible = cmpOn;
+      s.cmpRing.position.set(xc, yc, 0.2); s.cmpRing.material.opacity = V3.cmpA;
+      s.cmpStem.position.set(xc, (yc + Y3(pm)) / 2, 0.2); s.cmpStem.scale.set(1, Math.max(1e-3, Math.abs(yc - Y3(pm))), 1); s.cmpStem.material.opacity = 0.55 * V3.cmpA;
+      // half marker
+      s.halfDot.visible = s.halfRing.visible = half && rv > 0.9;
+      s.halfDot.position.set(xc, Y3(interp(LC.load, LC.half, S.cursorF)), 0); s.halfRing.position.copy(s.halfDot.position);
+      s.halfRing.rotation.z = t * 1.2; s.halfRing.material.opacity = 0.9;
+
+      // beads (live shots)
+      let ei = 0;
+      for (let i = 0; i < NB * 2; i++) { _m.makeScale(0, 0, 0); s.cores.setMatrixAt(i, _m); s.bPos[i * 3 + 1] = -99; s.bCol[i * 3] = s.bCol[i * 3 + 1] = s.bCol[i * 3 + 2] = 0; }
+      beads.forEach((b, i) => {
+        const age = reduced ? 1 : now - b.t0;
+        const drop = S3.ease.out(cl(age / 0.45)), fade = 1 - cl((age - 4.2) / 3.2);
+        if (fade <= 0) return;
+        const x = X3(b.R), y = Y3(b.pm) + (1 - drop) * 0.55, a = fade * (0.35 + 0.65 * drop);
+        const col = b.half ? lilac3 : mint3;
+        s.bPos.set([x, y, 0.15], i * 3); s.bCol.set([col.r * a * 1.5, col.g * a * 1.5, col.b * a * 1.5], i * 3);
+        _s.setScalar(a); _p.set(x, y, 0.15); _m.compose(_p, _q, _s); s.cores.setMatrixAt(i, _m); s.cores.setColorAt(i, _c.copy(col).lerp(new THREE.Color(1, 1, 1), 0.5));
+        if (b.cmp && S.cmp) {
+          const yg = Y3(Math.min(b.pc, YCAP)), j = NB + i;
+          s.bPos.set([x, yg, 0.2], j * 3); s.bCol.set([warn3.r * a * 0.8, warn3.g * a * 0.8, warn3.b * a * 0.8], j * 3);
+          _s.setScalar(a * 0.8); _p.set(x, yg, 0.2); _m.compose(_p, _q, _s); s.cores.setMatrixAt(j, _m); s.cores.setColorAt(j, warn3);
+          _s.set(1, Math.max(1e-3, Math.abs(yg - y)), 1); _p.set(x, (yg + y) / 2, 0.17); _m.compose(_p, _q, _s); s.errs.setMatrixAt(ei++, _m);
+        }
+      });
+      for (let i = ei; i < NB; i++) { _m.makeScale(0, 0, 0); s.errs.setMatrixAt(i, _m); }
+      s.errs.instanceMatrix.needsUpdate = true; s.cores.instanceMatrix.needsUpdate = true; if (s.cores.instanceColor) s.cores.instanceColor.needsUpdate = true;
+      s.bPts.geometry.attributes.position.needsUpdate = true; s.bPts.geometry.attributes.color.needsUpdate = true;
+
+      // camera: scroll intro → comp.view, + pointer parallax + drag orbit (springs back)
+      const asp = w / Math.max(1, h), narrow = asp < 1.2, fit = narrow ? Math.pow(1.5 / asp, 0.6) : Math.max(0.92, Math.pow(1.5 / asp, 0.9));
+      const kc = S3.ease.inOut(V3.cam), vw = comp.view;
+      for (let i = 0; i < 3; i++) oc.target[i] = I0.target[i] + (vw.target[i] - I0.target[i]) * kc;
+      oc.radius = (I0.radius + (vw.radius - I0.radius) * kc) * fit;
+      if (!reduced) {
+        const kp = 1 - Math.exp(-dt * 3);
+        V3.px += ((V3.pxT || 0) - V3.px) * kp; V3.py += ((V3.pyT || 0) - V3.py) * kp;
+        if (!drag || drag.mode !== 'orbit') { const d = Math.exp(-dt * 0.8); V3.az *= d; V3.el *= d; }
+      }
+      oc.azimuth = I0.azimuth + ((narrow ? -0.26 : vw.azimuth) - I0.azimuth) * kc + V3.az + V3.px * 0.06 + (reduced ? 0 : 0.03 * Math.sin(t * 0.2));
+      oc.elevation = cl(I0.elevation + (vw.elevation - I0.elevation) * kc + V3.el - V3.py * 0.03, -0.1, 1.1);
+      stage.orbit(oc);
+      stage.render();
+
+      // DOM labels stuck to the 3D chart
+      const cam = stage.camera, r = Math.round(S.cursorF), inBand = r >= 100 && r <= 250;
+      for (const l of LBL) {
+        let src = null, on = rv > 0.97, ax = -0.5, ay = -1, dx = 0, dy = -10;
+        if (l.a === 'marker') {
+          const html = half ? `${r} Ω → <b>${fmtP(r, LC.half)} W</b>${w < 480 ? '' : ' · 半功率'}` : `${r} Ω → <b>${fmtP(r, LC.full)} W</b>${w < 480 ? '' : inBand ? ' · 额定负载内' : ' · 额定负载外'}`;
+          if (html !== l.html) { l.html = html; l.el.innerHTML = html; l.el.classList.toggle('is-out', !inBand && !half); }
+          src = half ? _p.copy(s.halfDot.position).setY(s.halfDot.position.y + 0.16) : comp.anchors.marker;
+        } else if (l.a === 'band') { src = _p.set(X3(175), 0.08, -0.42); on = on && w >= 480; }
+        else if (l.a === 'half') { src = comp.anchors.half; on = on && !half; ax = -1; ay = -0.5; dx = -10; dy = 0; }
+        else if (l.a === 'cmp') { src = _p.set(X3(318), Y3((PSET[S.mode] * R_REF) / 318), 0.2); on = on && S.cmp && V3.cmpRev > 0.95; ax = -1; ay = 0; dx = 0; dy = 10; }
+        const o = projectAnchor(THREE, src, cam, w, h, l.out);
+        const vis = on && o.visible && o.x > 4 && o.x < w - 4 && o.y > 4 && o.y < h - 4;
+        if (vis !== l.on) { l.on = vis; l.el.classList.toggle('is-on', vis); }
+        if (vis) {
+          if (ax === -0.5 && o.x < w * 0.16) ax = 0; else if (ax === -0.5 && o.x > w * 0.84) ax = -1;
+          l.el.style.transform = `translate3d(${(o.x + dx).toFixed(1)}px, ${(o.y + dy).toFixed(1)}px, 0) translate(${ax * 100}%, ${ay * 100}%)`;
+        }
+      }
+    }
+    const fontsOK = Promise.all(['600 40px Montserrat', '500 40px Montserrat'].map((f) => document.fonts?.load(f))).catch(() => {});
+    fontsOK.then(() => {
+      m3 = mount3D(stageEl, {
+        THREE, stageLib: precompileLib(freshStageLib(S3)), dpr: 1.5, stageOpts: { fov: 30, transparent: true, exposure: 1.05 },
+        build: build3, frame: frame3,
+        dispose(s) { s?.comp?.dispose(); s?.glowTex?.dispose(); s?.extra?.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); },
+        fallback(c) { c.classList.add('is-nogl'); },
+      });
+    });
+    if (!reduced) {
+      ScrollTrigger.create({ trigger: stageEl, start: 'top 92%', end: 'top 30%', onUpdate: (st) => { V3.revT = Math.max(V3.revT, st.progress); V3.camT = st.progress; }, onLeave: () => { V3.revT = 1; V3.camT = 1; }, onEnterBack: () => { V3.camT = 1; } });
     }
 
     /* =============== mode / compare / play =============== */
@@ -296,17 +453,13 @@ export default {
       root.classList.toggle('imp--half', S.mode === 'half');
       el.set.textContent = PSET[S.mode];
       tweenNum(el.w, PSET[S.mode]);
-      drawCmpCurve();
-      setCursor(S.cursor);
+      setCursor(S.cursorF);
       still();
     }
     function applyCmp() {
       el.cmp.setAttribute('aria-pressed', String(S.cmp));
       root.classList.toggle('imp--cmp', S.cmp);
-      if (!reduced && S.cmp) {
-        const len = cmpPath.getTotalLength();
-        gsap.fromTo(cmpPath, { strokeDasharray: `${len}`, strokeDashoffset: len }, { strokeDashoffset: 0, duration: 1.2, ease: 'power2.out', onComplete: () => { cmpPath.style.strokeDasharray = ''; } });
-      }
+      if (S.cmp) V3.cmpRev = reduced ? 1 : 0; // the 3D P = V²/R curve draws in
       still();
     }
     el.seg.forEach((b) => b.addEventListener('click', () => { S.mode = b.dataset.mode; applyMode(); }));
@@ -514,34 +667,14 @@ export default {
     frame(0, 0);
     if (!reduced) ensureLoop(); // pauses off-screen; shots advance only while playing
 
-    drawCmpCurve();
     setCursor(S.cursor);
     applyMode();
 
-    // draw-in of the real curves
-    if (!reduced) {
-      [full, half].forEach((pl) => {
-        const len = polyLen(pl);
-        pl.style.strokeDasharray = `${len}`; pl.style.strokeDashoffset = `${len}`;
-      });
-      gsap.set([...fullDots, ...halfDots], { attr: { r: 0 } });
-      gsap.set(valLabels, { opacity: 0 });
-      onceVisible(svgEl, () => {
-        {
-          const tl = gsap.timeline();
-          tl.to(full, { strokeDashoffset: 0, duration: 1.6, ease: 'power2.inOut' })
-            .to(half, { strokeDashoffset: 0, duration: 1.4, ease: 'power2.inOut' }, 0.25)
-            .to(fullDots, { attr: { r: 4.2 }, duration: 0.4, stagger: 0.08, ease: 'back.out(3)' }, 0.5)
-            .to(halfDots, { attr: { r: 4.2 }, duration: 0.4, stagger: 0.06, ease: 'back.out(3)' }, 0.7)
-            .to(valLabels, { opacity: 1, duration: 0.6 }, 1.1)
-            .fromTo(cur, { opacity: 0 }, { opacity: 1, duration: 0.6 }, 1.2)
-            .add(() => { if (!root.style.getPropertyValue('--imp-cur')) sweepCursor(); }, 1.4);
-        }
-      }, 0.3);
-    }
+    // intro sweep of the 3D cursor across 75–350 Ω once the chart has built (then it follows the live shots)
     function sweepCursor() {
-      const o = { r: S.cursor };
-      gsap.timeline()
+      const o = { r: S.cursorF };
+      curTw?.kill();
+      curTw = gsap.timeline({ onComplete: () => { if (S.follow) setFollow(true); } })
         .to(o, { r: 80, duration: 1.2, ease: 'power2.inOut', onUpdate: () => setCursor(o.r) })
         .to(o, { r: 340, duration: 2.2, ease: 'power2.inOut', onUpdate: () => setCursor(o.r) })
         .to(o, { r: 180, duration: 1.2, ease: 'power2.inOut', onUpdate: () => setCursor(o.r) });
@@ -620,13 +753,9 @@ export default {
     setLv(S.lv - 1, false);
     // keep SVG text at a constant on-screen size (viewBox is scaled on narrow screens)
     function scaleSvgText() {
-      kChart = G.W / Math.max(1, svgEl.getBoundingClientRect().width);
-      svgEl.style.setProperty('--k', kChart.toFixed(3));
-      svgEl.classList.toggle('is-narrow', kChart > 1.4);
       const k2 = H13.W / Math.max(1, lvSvg.getBoundingClientRect().width);
       lvSvg.style.setProperty('--k', k2.toFixed(3));
       lvSvg.classList.toggle('is-narrow', k2 > 1.4);
-      setCursor(S.cursor);
     }
     scaleSvgText();
     lib.onResize(scaleSvgText);

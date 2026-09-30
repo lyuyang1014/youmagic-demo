@@ -1,4 +1,4 @@
-/* #clinical — 临床数据 (light theme, brochure p.3) */
+/* #clinical — 临床数据 (light theme, brochure p.3). `.is-3d` = WebGL header active (particle 212 + medallions). */
 #clinical {
   --cl-ym: #1f7a57;
   --cl-ctl: #a4aaa7;
@@ -18,7 +18,54 @@
 #clinical .cl-kicker { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 14px; color: var(--text-2); }
 #clinical .cl-kicker .mono { font-size: 10.5px; letter-spacing: 0.2em; color: var(--green); padding: 4px 10px; border: 1px solid rgba(31, 122, 87, 0.3); border-radius: 999px; }
 #clinical .sec-head .h1 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 0.2em; }
-#clinical .cl-hero-n { font-weight: 300; font-size: 1.28em; letter-spacing: -0.02em; }
+
+/* ---------- hero: particle “212” + medallion row (3D) ---------- */
+#clinical .cl-hero { position: relative; margin-bottom: clamp(36px, 5vw, 64px); }
+#clinical .cl-head { max-width: none; margin-bottom: 0; }
+#clinical .cl-title { gap: 0; margin-top: 6px; line-height: 1; }
+#clinical .cl-hero-n { font-weight: 300; font-size: clamp(112px, 16.5vw, 236px); line-height: 1; letter-spacing: -0.02em; white-space: nowrap; margin-right: 0.07em; }
+#clinical .cl-bl { display: inline-block; width: 0; height: 0; vertical-align: baseline; }
+#clinical .cl-title__u, #clinical .cl-title__t { line-height: 1.12; }
+#clinical .cl-head .lead { margin-top: clamp(14px, 1.6vw, 24px); }
+#clinical .cl-hint { position: absolute; left: 0; top: 0; display: none; }
+#clinical .cl-gl { position: absolute; left: 0; right: 0; top: 0; height: 100vh; z-index: 0; pointer-events: none; transition: none !important; }
+#clinical .cl-gl canvas { pointer-events: none; }
+#clinical .cl-strip, #clinical > .wrap { z-index: 1; }
+#clinical > .wrap { position: relative; }
+
+/* 3D mode: the h2 keeps a transparent slot where the particle number is rendered */
+#clinical.is-3d .cl-hero-n {
+  display: inline-block; width: 1.526em; color: transparent; background: none; -webkit-text-fill-color: transparent;
+  cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; overflow: visible;
+}
+#clinical.is-3d .cl-hero-n.is-grab { cursor: grabbing; }
+#clinical.is-3d .cl-hero-n::selection { background: transparent; }
+#clinical.is-3d .cl-hint {
+  display: inline-flex; align-items: center; gap: 7px; z-index: 2; pointer-events: none; white-space: nowrap;
+  font-size: 10px; letter-spacing: 0.16em; color: var(--green); padding: 5px 10px 5px 8px; margin: 6px 0 0 8px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(31, 122, 87, 0.22); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity 0.6s var(--ease-out);
+}
+#clinical.is-3d .cl-hint i { width: 14px; height: 8px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 8'%3E%3Cpath d='M4 1L1 4l3 3M10 1l3 3-3 3M1 4h12' fill='none' stroke='%231f7a57' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+#clinical.is-3d .cl-hint.is-on { opacity: 1; }
+#clinical.is-3d .cl-hint.is-gone { opacity: 0 !important; }
+
+#clinical .cl-hero .cl-centers { margin-top: clamp(40px, 5vw, 72px); }
+#clinical.is-3d .cl-centers__link, #clinical.is-3d .cl-seal > * { visibility: hidden; }
+#clinical.is-3d .cl-centers__row { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(8px, 1.4vw, 18px); }
+#clinical.is-3d .cl-center {
+  position: static; background: none; box-shadow: none; border-radius: 0; cursor: pointer; outline: none;
+  padding: 6px 0 calc(var(--cl-coin) * 0.16 + 64px);
+}
+#clinical.is-3d .cl-centers { --cl-coin: clamp(70px, 12.4vw, 180px); }
+#clinical.is-3d .cl-seal { width: var(--cl-coin); }
+#clinical.is-3d .cl-center figcaption {
+  position: absolute; left: 0; top: 0; width: calc((100% - 3 * clamp(8px, 1.4vw, 18px)) / 4); padding: 0 4px;
+  opacity: 0; transition: opacity 0.7s var(--ease-out), color 0.3s; will-change: transform;
+}
+#clinical.is-3d .cl-center figcaption.is-on { opacity: 1; }
+#clinical.is-3d .cl-center:hover figcaption, #clinical.is-3d .cl-center:focus-visible figcaption { color: var(--green); }
+#clinical.is-3d .cl-center:focus-visible figcaption .mono { color: var(--green); }
 
 /* ---------- stats ---------- */
 #clinical .cl-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line); margin-bottom: clamp(28px, 4vw, 48px); }
@@ -312,6 +359,11 @@
   #clinical .cl-svg .cl-rowl { font-size: 12px; }
   #clinical .cl-center { padding: 18px 8px 16px; }
   #clinical .cl-center figcaption { font-size: 13px; }
+  #clinical .cl-title__t { flex-basis: 100%; margin-top: 6px; }
+  #clinical .cl-hero-n { font-size: clamp(96px, 33vw, 140px); }
+  #clinical.is-3d .cl-center { padding-bottom: calc(var(--cl-coin) * 0.16 + 70px); }
+  #clinical.is-3d .cl-center figcaption { font-size: 11.5px; line-height: 1.45; padding: 0 1px; }
+  #clinical.is-3d .cl-center figcaption .mono { font-size: 9.5px; }
   #clinical .cl-fig { padding: 18px 14px; }
   #clinical .cl-fig .seg button { padding: 6px 10px; font-size: 11.5px; }
   #clinical .cl-group__head { align-items: flex-start; }

@@ -83,7 +83,8 @@
 #skinlab .sl-chip[aria-pressed="true"] .sl-chip__ic { opacity: 1; box-shadow: 0 0 10px currentColor; }
 
 /* ---------- views ---------- */
-#skinlab .sl-views { display: grid; grid-template-columns: minmax(0, 1.58fr) minmax(0, 1fr); gap: 14px; }
+#skinlab .sl-views { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; }
+#skinlab .sl-main { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
 #skinlab .sl-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
 #skinlab .sl-view {
   position: relative; margin: 0; overflow: hidden; border-radius: var(--sl-r); background: #0a0910;
@@ -94,7 +95,8 @@
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 3;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
-#skinlab .sl-view--histo { aspect-ratio: 16 / 10.4; }
+#skinlab .sl-view--histo { aspect-ratio: 16 / 10; }
+#skinlab .sl-view--3d { aspect-ratio: 16 / 11; }
 #skinlab .sl-view--surf { aspect-ratio: 16 / 10; }
 #skinlab .sl-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 0.9s var(--ease-out); }
 #skinlab.sl-ready .sl-cv { opacity: 1; }
@@ -322,10 +324,12 @@
 /* ---------- pinned desktop sequence ---------- */
 #skinlab.sl-pinned .sl-frame { height: 100vh; height: 100svh; padding-top: 74px; padding-bottom: 14px; gap: 12px; }
 #skinlab.sl-pinned .sl-views { flex: 1 1 auto; min-height: 0; }
-#skinlab.sl-pinned .sl-view--histo { aspect-ratio: auto; height: 100%; }
+#skinlab.sl-pinned .sl-main { height: 100%; }
+#skinlab.sl-pinned .sl-view--3d { aspect-ratio: auto; flex: 1 1 auto; min-height: 0; }
 #skinlab.sl-pinned .sl-col { min-height: 0; }
-#skinlab.sl-pinned .sl-view--surf { aspect-ratio: auto; flex: 1 1 auto; min-height: 150px; }
-#skinlab.sl-pinned .sl-read, #skinlab.sl-pinned .sl-quote { flex: none; }
+#skinlab.sl-pinned .sl-view--histo { aspect-ratio: auto; flex: 1.12 1 0; min-height: 150px; }
+#skinlab.sl-pinned .sl-view--surf { aspect-ratio: auto; flex: 1 1 0; min-height: 130px; }
+#skinlab.sl-pinned .sl-quote { flex: none; }
 /* reserve two lines for the stage quote so the surface view (and its GPU targets) doesn't resize at ②/③ */
 #skinlab.sl-pinned .sl-quote__q { min-height: calc(2 * 1.65 * 14.5px); display: flex; align-items: center; }
 @media (max-height: 860px) {
@@ -432,7 +436,7 @@
 }
 /* un-pinned desktop (reduced motion / short screens): let the section fill the row height */
 @media (min-width: 1000px) {
-  #skinlab:not(.sl-pinned) .sl-view--histo { aspect-ratio: auto; min-height: 460px; }
+  #skinlab:not(.sl-pinned) .sl-view--3d { aspect-ratio: auto; flex: 1 1 auto; min-height: 520px; }
 }
 
 /* live pulse-phase badge on the cross-section */
@@ -473,3 +477,101 @@
 /* idle hygiene: no invisible infinite animations (repaints) once the engines are up / the badge is hidden */
 #skinlab.sl-ready .sl-view:not(.is-lost) .sl-load i, #skinlab.sl-nogl .sl-load i { animation: none; }
 #skinlab .sl-rf:not([data-ph="cool"]):not([data-ph="rf"]) .sl-rf__dot { animation: none; }
+
+
+/* ---------- 3D primary view (YM3D skin block; twin 治疗前 block from ④) ---------- */
+#skinlab .sl-view--3d { background: #0a0910; container-type: inline-size; container-name: sl3; }
+#skinlab .sl-3d { position: absolute; inset: 0; }
+#skinlab .sl-view--3d.is-ready .sl-load { opacity: 0; }
+#skinlab .sl-view--3d.is-ready .sl-load i { animation: none; }
+#skinlab .sl-3l-wrap { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+#skinlab .sl-3l {
+  position: absolute; left: 0; top: 0; opacity: 0; transition: opacity 0.4s var(--ease-out); will-change: transform, opacity;
+  font-size: 11.5px; line-height: 1; color: #fff; white-space: nowrap;
+}
+#skinlab .sl-3l.is-on { opacity: 1; }
+#skinlab .sl-3l i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px rgba(255, 255, 255, 0.85); }
+#skinlab .sl-3l::after { content: ""; position: absolute; top: 0; width: 14px; height: 1px; background: rgba(255, 255, 255, 0.55); }
+#skinlab .sl-3l b {
+  position: absolute; top: -11px; font-weight: 500; padding: 5px 9px; border-radius: 999px;
+  background: rgba(20, 12, 32, 0.62); border: 1px solid rgba(255, 255, 255, 0.16); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+#skinlab .sl-3l--l b { right: 20px; } #skinlab .sl-3l--l::after { right: 4px; }
+#skinlab .sl-3l--r b { left: 20px; } #skinlab .sl-3l--r::after { left: 4px; }
+#skinlab .sl-3l--dermis b { border-color: rgba(67, 230, 168, 0.55); }
+#skinlab .sl-3l--heatCore i { background: var(--heat-5); box-shadow: 0 0 12px var(--heat-4); }
+#skinlab .sl-3l--heatCore b { border-color: rgba(240, 96, 63, 0.6); }
+#skinlab .sl-3l--cool i { background: var(--cool); box-shadow: 0 0 12px var(--cool); }
+#skinlab .sl-3l--cool b { border-color: rgba(127, 212, 255, 0.6); }
+#skinlab .sl-3l--pad i { background: var(--mint); box-shadow: 0 0 12px var(--mint); }
+#skinlab .sl-3l--pad b { border-color: rgba(67, 230, 168, 0.55); }
+#skinlab .sl-3l--typeI i { background: var(--sl-t1); box-shadow: 0 0 12px var(--sl-t1); }
+#skinlab .sl-3l--typeI b { border-color: var(--sl-t1); }
+#skinlab .sl-3l--typeIII i { background: var(--sl-t3); box-shadow: 0 0 12px var(--sl-t3); }
+#skinlab .sl-3l--typeIII b { border-color: var(--sl-t3); }
+#skinlab .sl-tw {
+  position: absolute; left: 0; top: 0; z-index: 3; opacity: 0; pointer-events: none; will-change: transform, opacity; transition: opacity 0.5s var(--ease-out);
+  display: grid; justify-items: center; gap: 3px; padding: 7px 14px 6px; border-radius: 12px; white-space: nowrap;
+  font: 500 13px/1.1 var(--f-sans); letter-spacing: 0.06em; color: #fff;
+  background: var(--sl-glass); border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+#skinlab .sl-tw small { font: 400 10.5px/1 var(--f-mono); letter-spacing: 0.08em; color: var(--text-3); }
+#skinlab .sl-tw--now { border-color: rgba(67, 230, 168, 0.65); box-shadow: 0 0 26px -8px rgba(67, 230, 168, 0.8); }
+#skinlab .sl-tw--now small { color: var(--mint); }
+#skinlab .sl-view--3d.is-twin .sl-tw { opacity: 1; }
+#skinlab .sl-3hint {
+  position: absolute; right: 12px; bottom: 12px; z-index: 4; pointer-events: none; display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px; border-radius: 999px; font-size: 11px; color: var(--text-3); background: rgba(9, 9, 16, 0.55); border: 1px solid var(--line); transition: opacity 0.6s;
+}
+#skinlab .sl-3hint::before { content: "⟲"; font-size: 13px; color: var(--mint); }
+#skinlab .sl-view--3d.is-dragged .sl-3hint { opacity: 0; }
+@media (hover: none) { #skinlab .sl-3hint { display: none; } }
+#skinlab .sl-view--3d .sl-hud--tl { right: auto; }
+/* pulse-phase badge + heat legend now live on the 3D view */
+#skinlab .sl-view--3d .sl-rf { top: 14px; bottom: auto; }
+#skinlab .sl-view--3d .sl-legend { right: 12px; bottom: 50px; }
+@media (hover: none) { #skinlab .sl-view--3d .sl-legend { bottom: 12px; } }
+@container sl3 (max-width: 760px) {
+  #skinlab .sl-view--3d .sl-rf { top: 52px; left: 12px; transform: none; font-size: 11px; padding: 5px 10px 5px 8px; gap: 6px; }
+  #skinlab .sl-view--3d .sl-rf[data-ph="rf"] .sl-rf__w { display: none; }
+  #skinlab .sl-view--3d .sl-rf b { font-size: 11px; }
+  #skinlab .sl-view--3d .sl-legend { grid-template-columns: auto 64px; padding: 6px 8px; }
+  #skinlab .sl-3l { font-size: 10.5px; }
+  #skinlab .sl-3l b { padding: 4px 7px; top: -10px; }
+  #skinlab .sl-3l--l b { right: 12px; } #skinlab .sl-3l--r b { left: 12px; }
+  #skinlab .sl-3l::after { width: 8px; }
+  #skinlab .sl-tw { font-size: 11.5px; padding: 5px 10px; }
+}
+@container sl3 (max-width: 520px) {
+  #skinlab .sl-view--3d .sl-hud--tr { top: auto; bottom: 10px; left: 10px; right: auto; }
+  #skinlab .sl-view--3d .sl-legend { bottom: 12px; }
+  #skinlab .sl-pill--3d { display: none; }
+}
+/* collagen readouts: a glass overlay on the 3D view (desktop), a normal card below it (tablet / phone) */
+@media (min-width: 1000px) {
+  #skinlab .sl-main > .sl-read {
+    position: absolute; left: 12px; bottom: 12px; z-index: 6; width: min(360px, 44%); padding: 11px 14px 8px;
+    background: rgba(9, 9, 16, 0.7); border-color: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(12px) saturate(1.2); -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  }
+  #skinlab .sl-main > .sl-read .sl-stat__v b { font-size: clamp(24px, 2vw, 30px); }
+  #skinlab .sl-main > .sl-read .sl-chart { margin-top: 6px; }
+  #skinlab .sl-view--3d .sl-legend { bottom: 12px; }
+  #skinlab .sl-view--3d .sl-3hint { bottom: auto; top: 54px; right: 12px; }
+}
+/* right column: secondary views */
+#skinlab .sl-col .sl-view { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 24px 60px -40px rgba(138, 92, 240, 0.5); }
+#skinlab.sl-pinned .sl-col .sl-quote__q { min-height: 0; font-size: 13px; line-height: 1.55; }
+#skinlab.sl-pinned .sl-col .sl-quote { padding: 9px 14px 9px 16px; }
+#skinlab.sl-pinned .sl-col .sl-quote__src { margin-top: 3px; }
+@media (max-width: 999px) {
+  #skinlab .sl-main { display: flex; }
+  #skinlab .sl-view--3d { aspect-ratio: 16 / 12; }
+  #skinlab .sl-col { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  #skinlab .sl-view--surf { grid-column: auto; }
+  #skinlab .sl-col .sl-quote { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+  #skinlab .sl-view--3d { aspect-ratio: 1 / 1.02; }
+  #skinlab .sl-view--histo { aspect-ratio: 4 / 3.2; }
+}

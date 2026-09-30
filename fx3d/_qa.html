@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YM3D QA Harness</title>
+<style>
+  @font-face { font-family: 'Montserrat'; src: url('../assets/fonts/Montserrat-VF.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+  html, body { margin: 0; background: #07070c; overflow: hidden; }
+  canvas { display: block; }
+</style>
+<script type="importmap">{"imports":{"three":"../vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+// YM3D QA harness — every YM3D component on ONE shared createStage(), driven by script:
+//   window.QA.add(name, opts?)  → builds a component (hidden until show)
+//   window.QA.show(name)        → makes it the only visible one
+//   window.QA.render(params, cam?) → { hash, ms }  (hash = FNV-1a of the full RGBA framebuffer)
+//   window.QA.perf(params, cam?, n=60, animate=true) → { avgMs, p95Ms, calls, tris }  (GPU-synced via 1px readPixels)
+//   window.QA.shot() → PNG data URL of the last frame
+// URL: ?w=1440&h=900&dpr=1
+import * as THREE from 'three';
+import * as YM from '../js/ym3d/stage.mjs';
+import * as DEV from '../js/ym3d/device.mjs';
+import { createSkinCube } from '../js/ym3d/skincube.mjs';
+import * as DV from '../js/ym3d/dataviz.mjs';
+
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w') || 1440), H = +(q.get('h') || 900), DPR = +(q.get('dpr') || 1);
+await document.fonts.load('600 40px Montserrat'); await document.fonts.load('500 40px Montserrat'); await document.fonts.ready;
+const loadImg = (src) => new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+const imgs = await Promise.all([1, 2, 3, 4].map((i) => loadImg(`../assets/img/center-${i}.webp`)));
+const texs = imgs.map((im) => { if (!im) return null; const t = new THREE.Texture(im); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.needsUpdate = true; return t; });
+
+const canvas = document.getElementById('c');
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+const stage = YM.createStage(THREE, canvas, { width: W, height: H, dpr: DPR, preserveDrawingBuffer: true, fov: 30 });
+const gl = stage.renderer.getContext();
+
+const FACT = {
+  device: () => { const c = DEV.createDevice(THREE, {}); c.view = { target: [0, 0.64, 0], radius: 3.9, azimuth: -0.55, elevation: 0.16 }; return c; },
+  handpiece: () => { const c = DEV.createHandpiece(THREE, {}); const g = new THREE.Group(); g.add(c.object3d); c.object3d.rotation.set(0.15, 0, 2.3); c.object3d3 = g; c.view = { target: [0.0, 0.02, 0], radius: 0.62, azimuth: 0.2, elevation: 0.2 }; return c; },
+  tip: () => { const c = DEV.createTip(THREE, {}); c.view = { target: [0, 0.018, 0], radius: 0.16, azimuth: 0.6, elevation: 0.5 }; return c; },
+  skincube: () => { const c = createSkinCube(THREE, { lib: YM }); c.view = { target: [0, -0.85, 0], radius: 14.5, azimuth: 0.62, elevation: 0.4 }; return c; },
+  matrix: () => DV.createEnergyMatrix3D(THREE, {}),
+  pulse: () => DV.createPulseTrain3D(THREE, {}),
+  load: () => DV.createLoadCurve3D(THREE, {}),
+  digits: () => DV.createDigits3D(THREE, { size: 1 }),
+  rings: () => DV.createShieldRings3D(THREE, {}),
+  lock: () => DV.createLock54(THREE, {}),
+  particles: () => DV.createParticleNumber(THREE, { text: '212' }),
+  medallions: () => DV.createMedallions(THREE, { textures: texs }),
+};
+const comps = {};
+let cur = null;
+const QA = {
+  THREE, stage, comps, DEV, DV, YM,
+  add(name, key = name) { const c = FACT[name](); c._root = c.object3d3 || c.object3d; c._root.visible = false; stage.scene.add(c._root); comps[key] = c; return key; },
+  show(key) { for (const k in comps) comps[k]._root.visible = k === key; cur = comps[key]; },
+  remove(key) { const c = comps[key]; stage.scene.remove(c._root); c.dispose(); delete comps[key]; if (cur === c) cur = null; },
+  frame(params = {}, cam) {
+    cur.update(params);
+    stage.orbit({ ...(cur.view || {}), ...(cam || {}) });
+    stage.render();
+  },
+  hash() {
+    const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    let a = 0x811c9dc5; for (let i = 0; i < px.length; i++) { a ^= px[i]; a = Math.imul(a, 0x01000193); }
+    let nz = 0; for (let i = 0; i < px.length; i += 4) if (px[i] + px[i + 1] + px[i + 2] > 40) nz++;
+    return { hash: (a >>> 0).toString(16), lit: +(nz / (w * h)).toFixed(4) };
+  },
+  render(params, cam) { const t0 = performance.now(); QA.frame(params, cam); const r = QA.hash(); r.ms = +(performance.now() - t0).toFixed(1); return r; },
+  perf(params = {}, cam, n = 60, animate = true) {
+    const px = new Uint8Array(4), ts = [];
+    for (let i = 0; i < 5; i++) { QA.frame({ ...params, t: (params.t || 0) + i / 60 }, cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+    for (let i = 0; i < n; i++) {
+      const p = animate ? { ...params, t: (params.t || 0) + i / 60 } : params;
+      const t0 = performance.now(); QA.frame(p, cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ts.push(performance.now() - t0);
+    }
+    ts.sort((a, b) => a - b);
+    const info = stage.renderer.info.render;
+    return { avgMs: +(ts.reduce((a, b) => a + b, 0) / n).toFixed(2), p50Ms: +ts[n >> 1].toFixed(2), p95Ms: +ts[Math.floor(n * 0.95)].toFixed(2), calls: info.calls, tris: info.triangles };
+  },
+  updateCost(params = {}, n = 200) { const t0 = performance.now(); for (let i = 0; i < n; i++) cur.update({ ...params, t: i / 60 }); return +((performance.now() - t0) / n).toFixed(3); },
+  shot() { return canvas.toDataURL('image/png'); },
+  ready: true,
+};
+window.QA = QA;
+</script>
+</body>
+</html>

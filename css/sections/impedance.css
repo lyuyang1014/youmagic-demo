@@ -37,7 +37,7 @@
 #impedance .imp-count b { color: var(--imp-mint); font-weight: 500; }
 
 /* main grid */
-#impedance .imp-main { display: grid; grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr); gap: clamp(14px, 1.6vw, 24px); align-items: stretch; }
+#impedance .imp-main { display: grid; grid-template-columns: minmax(0, 1.34fr) minmax(0, 0.66fr); gap: clamp(14px, 1.6vw, 24px); align-items: stretch; }
 #impedance .imp-live { padding: clamp(16px, 1.8vw, 24px); display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
 #impedance .imp-live::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
@@ -46,11 +46,11 @@
 #impedance .imp-live__head { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); letter-spacing: 0.06em; }
 #impedance .imp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--imp-mint); box-shadow: 0 0 0 0 rgba(67, 230, 168, 0.6); animation: imp-live 1.8s infinite; }
 @keyframes imp-live { 0% { box-shadow: 0 0 0 0 rgba(67, 230, 168, 0.55); } 70% { box-shadow: 0 0 0 9px rgba(67, 230, 168, 0); } 100% { box-shadow: 0 0 0 0 rgba(67, 230, 168, 0); } }
-#impedance .imp-live__grid { display: grid; grid-template-columns: minmax(0, 1fr) 76px minmax(0, 1fr); gap: 10px; align-items: stretch; }
+#impedance .imp-live__grid { display: grid; grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr); gap: 8px; align-items: stretch; }
 #impedance .imp-io { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 #impedance .imp-k { font-size: 12px; color: var(--text-3); letter-spacing: 0.04em; }
 #impedance .imp-k b { color: var(--text-2); font-weight: 500; font-family: var(--f-display); }
-#impedance .imp-big { font-size: clamp(38px, 3.6vw, 54px); font-weight: 300; line-height: 1; color: var(--imp-lilac); letter-spacing: -0.01em; }
+#impedance .imp-big { font-size: clamp(34px, 2.9vw, 46px); font-weight: 300; line-height: 1; color: var(--imp-lilac); letter-spacing: -0.01em; }
 #impedance .imp-big small { font-size: 0.4em; margin-left: 6px; color: var(--text-3); letter-spacing: 0; }
 #impedance .imp-big--out { color: var(--imp-mint); text-shadow: 0 0 24px rgba(67, 230, 168, 0.35); }
 #impedance .imp-tissue { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(120% 80% at 50% 0%, rgba(183, 155, 255, 0.06), rgba(7, 7, 12, 0.6)); }
@@ -67,7 +67,7 @@
 
 #impedance .imp-net { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; }
 #impedance .imp-net .micro { font-size: 10px; line-height: 1.4; }
-#impedance .imp-net__svg { width: 76px; height: 190px; overflow: visible; }
+#impedance .imp-net__svg { width: 58px; height: 170px; overflow: visible; }
 #impedance .imp-e { fill: none; stroke: rgba(67, 230, 168, 0.16); stroke-width: 1; }
 #impedance .imp-n { fill: #0d0d16; stroke: rgba(67, 230, 168, 0.6); stroke-width: 1.2; }
 #impedance .imp-net__svg.is-pulse .imp-e { animation: imp-e 0.9s var(--d) ease-out; }
@@ -82,10 +82,11 @@
 #impedance .imp-ghost { font-size: 12px; color: #f6b6a6; display: none; align-items: center; gap: 8px; }
 #impedance .imp-ghost i { width: 14px; border-top: 2px dashed var(--imp-warn); }
 #impedance .imp-ghost b { font-family: var(--f-display); font-weight: 400; font-size: 15px; color: #ffd2c6; }
-#impedance.imp--cmp .imp-ghost { display: flex; }
+#impedance.imp--cmp .imp-ghost { display: block; line-height: 1.5; }
+#impedance .imp-ghost i { display: inline-block; vertical-align: middle; margin-right: 6px; }
 
-#impedance .imp-scope { border-top: 1px solid var(--line); padding-top: 12px; margin-top: auto; }
-#impedance .imp-scope canvas { width: 100%; height: 172px; }
+#impedance .imp-scope { border-top: 1px solid var(--line); padding-top: 12px; margin-top: auto; display: flex; flex-direction: column; flex: 1 1 auto; }
+#impedance .imp-scope canvas { width: 100%; flex: 1 1 0; height: 0; min-height: 172px; max-height: 320px; }
 #impedance .imp-scope__lg { margin-top: 8px; font-size: 11.5px; }
 #impedance .imp-lg-cmp { display: none !important; }
 #impedance.imp--cmp .imp-lg-cmp { display: inline-flex !important; }
@@ -94,49 +95,51 @@
 #impedance .imp-chart { margin: 0; padding: clamp(16px, 1.8vw, 24px); display: flex; flex-direction: column; }
 #impedance .imp-chart__cap { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 #impedance .imp-chart__t { font-size: 15px; color: var(--text); letter-spacing: 0.04em; }
-#impedance .imp-svg { width: 100%; height: auto; margin-top: 10px; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: ew-resize; overflow: visible; }
 #impedance .viz .gridline--minor { stroke: rgba(255, 255, 255, 0.035); }
 #impedance .viz { --k: 1; }
 #impedance .viz text { font-size: calc(11px * var(--k)); }
 #impedance .viz line, #impedance .viz polyline, #impedance .viz path, #impedance .viz rect.imp-lvbar { vector-effect: non-scaling-stroke; }
 #impedance .viz .imp-axlab { fill: var(--text-3); font-size: calc(11px * var(--k)); font-family: var(--f-sans); }
-#impedance .imp-band-edge { stroke: rgba(67, 230, 168, 0.35); stroke-dasharray: 3 4; }
-#impedance .viz .imp-band-t { fill: rgba(67, 230, 168, 0.85); font-family: var(--f-sans); font-size: calc(11.5px * var(--k)); }
-#impedance .imp-bracket { fill: none; stroke: rgba(255, 255, 255, 0.28); }
-#impedance .viz .imp-bracket-t { fill: var(--text-3); font-family: var(--f-sans); font-size: calc(11px * var(--k)); }
-#impedance .imp-c { fill: none; stroke-linejoin: round; stroke-linecap: round; }
-#impedance .imp-c--full { stroke: var(--imp-mint); stroke-width: 2.6; filter: drop-shadow(0 0 6px rgba(67, 230, 168, 0.55)); }
-#impedance .imp-c--half { stroke: var(--violet); stroke-width: 2.2; }
-#impedance .imp-c--cmp { stroke: var(--imp-warn); stroke-width: 2; stroke-dasharray: 7 6; opacity: 0; transition: opacity .5s; }
-#impedance.imp--cmp .imp-c--cmp { opacity: 1; }
-#impedance .imp-pt { fill: var(--ink); stroke-width: 2; }
-#impedance .imp-pt--full { stroke: var(--imp-mint); }
-#impedance .imp-pt--half { stroke: var(--violet); }
-#impedance.imp--half .imp-c--full, #impedance.imp--half .imp-pt--full { opacity: 0.35; }
-#impedance:not(.imp--half) .imp-c--half, #impedance:not(.imp--half) .imp-pt--half { opacity: 0.55; }
-#impedance.imp--half .imp-c--half { filter: drop-shadow(0 0 6px rgba(138, 92, 240, 0.7)); }
-#impedance .viz .imp-vl { font-size: calc(11px * var(--k)); }
-#impedance .viz .imp-vl--full { fill: rgba(67, 230, 168, 0.9); }
-#impedance .viz .imp-vl--half { fill: #b79bff; }
-#impedance .viz .imp-cmp-lab { fill: #f6b6a6; font-size: calc(10.5px * var(--k)); font-family: var(--f-sans); opacity: 0; transition: opacity .5s; }
-#impedance.imp--cmp .viz .imp-cmp-lab { opacity: 1; }
-#impedance .imp-shot__m { fill: var(--imp-mint); filter: url(#imp-glow); }
-#impedance.imp--half .imp-shot__m { fill: #b79bff; }
-#impedance .imp-shot__g { fill: none; stroke: var(--imp-warn); stroke-width: 1.8; }
-#impedance .imp-shot__err { stroke: var(--imp-warn); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.7; }
-#impedance .imp-cur { outline: none; }
-#impedance .imp-cur__l { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; stroke-dasharray: 3 3; }
-#impedance .imp-cur__p { stroke: #fff; stroke-width: 2; }
-#impedance .imp-cur__p--full { fill: var(--imp-mint); }
-#impedance .imp-cur__p--half { fill: var(--violet); }
-#impedance .imp-cur__p--cmp { fill: var(--imp-warn); opacity: 0; }
-#impedance.imp--cmp .imp-cur__p--cmp { opacity: 1; }
-#impedance .imp-cur__tag rect { fill: #fff; }
-#impedance .viz .imp-cur__tag text { fill: #07070c; font-size: 11px; font-weight: 500; }
-#impedance .imp-cur__knob circle { fill: #fff; filter: drop-shadow(0 0 6px rgba(67, 230, 168, 0.8)); }
-#impedance .imp-cur__knob path { stroke: #07070c; stroke-width: 1.2; }
-#impedance .imp-cur:focus-visible .imp-cur__knob circle { stroke: var(--imp-mint); stroke-width: 3; }
 
+/* 图12 — 3D load curve (YM3D, one WebGL context via mount3D) */
+#impedance .imp-chart__3d { font-family: var(--f-mono); font-size: 10px; letter-spacing: .12em; color: var(--imp-mint); border: 1px solid rgba(67, 230, 168, .4); border-radius: 5px; padding: 1px 5px; margin-left: 6px; vertical-align: 2px; }
+#impedance .imp-3d { position: relative; height: clamp(380px, 37vw, 560px); margin: 6px calc(clamp(16px, 1.8vw, 24px) * -1) 0; touch-action: pan-y; cursor: grab; outline: none; -webkit-user-select: none; user-select: none; }
+#impedance .imp-3d.is-over, #impedance .imp-3d.is-cur { cursor: ew-resize; }
+#impedance .imp-3d.is-orbit { cursor: grabbing; }
+#impedance .imp-3d:focus-visible { box-shadow: inset 0 0 0 2px var(--imp-mint); border-radius: 12px; }
+#impedance .imp-3d canvas {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent 100%), linear-gradient(180deg, transparent 0, #000 6%, #000 94%, transparent 100%);
+  -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent 100%), linear-gradient(180deg, transparent 0, #000 6%, #000 94%, transparent 100%); mask-composite: intersect;
+}
+#impedance .imp-3d.is-nogl { height: auto; min-height: 120px; }
+#impedance .imp-lbls { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+#impedance .imp-lb {
+  position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 12px; line-height: 1.3; padding: 5px 11px; border-radius: 999px;
+  background: rgba(12, 12, 20, .66); border: 1px solid rgba(255, 255, 255, .14); color: var(--text);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: 0; transition: opacity .3s; will-change: transform;
+}
+#impedance .imp-lb.is-on { opacity: 1; }
+#impedance .imp-lb b { font-family: var(--f-display); font-weight: 500; font-size: 14px; color: var(--imp-mint); }
+#impedance .imp-lb--mk { font-size: 12.5px; border-color: rgba(67, 230, 168, .5); box-shadow: 0 0 24px -8px rgba(67, 230, 168, .7); }
+#impedance .imp-lb--mk.is-out { border-color: rgba(242, 164, 75, .55); box-shadow: 0 0 24px -8px rgba(242, 164, 75, .6); }
+#impedance .imp-lb--mk.is-out b { color: var(--lv-mid); }
+#impedance.imp--half .imp-lb--mk { border-color: rgba(183, 155, 255, .55); box-shadow: 0 0 24px -8px rgba(138, 92, 240, .7); }
+#impedance.imp--half .imp-lb--mk b { color: var(--imp-lilac); }
+#impedance .imp-lb--band { color: #a9f5d6; border-color: rgba(67, 230, 168, .35); font-size: 11.5px; }
+#impedance .imp-lb--half { color: #d4c6ff; border-color: rgba(183, 155, 255, .4); font-size: 11.5px; }
+#impedance .imp-lb--cmp { color: #ffd2c6; border-color: rgba(240, 96, 63, .5); border-style: dashed; font-size: 11.5px; }
+#impedance .imp-lb--cmp em { font-style: normal; font-family: var(--f-mono); font-size: 10px; margin-left: 6px; color: #f6c7b8; }
+#impedance .imp-follow {
+  position: absolute; right: 12px; top: 8px; z-index: 3; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 12px; color: var(--text-2); padding: 5px 12px 5px 8px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(12, 12, 20, .6);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); transition: color .2s, border-color .2s;
+}
+#impedance .imp-follow i { width: 22px; height: 12px; border-radius: 999px; background: rgba(255, 255, 255, .14); position: relative; transition: background .25s; }
+#impedance .imp-follow i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: #fff; transition: transform .3s var(--ease-out); }
+#impedance .imp-follow[aria-pressed="true"] { color: var(--text); border-color: rgba(183, 155, 255, .5); }
+#impedance .imp-follow[aria-pressed="true"] i { background: var(--imp-lilac); }
+#impedance .imp-follow[aria-pressed="true"] i::after { transform: translateX(10px); }
+#impedance .imp-follow:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
 #impedance .imp-read { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
 #impedance .imp-read__i { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.025); display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 4px; row-gap: 2px; min-width: 0; }
 #impedance .imp-read__k { width: 100%; font-size: 11.5px; color: var(--text-3); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -175,7 +178,6 @@
 #impedance .viz .imp-lvlab { font-size: calc(9.5px * var(--k)); fill: var(--text-3); transition: fill .3s; }
 #impedance .viz .imp-lvlab.is-cur { fill: #fff; font-size: calc(11px * var(--k)); }
 #impedance .imp-lvsvg.is-narrow .imp-lvlab--half:not(.is-cur), #impedance .imp-lvsvg.is-narrow .imp-x0, #impedance .imp-lvsvg.is-narrow .imp-axlab--x, #impedance .imp-lvsvg.is-narrow .imp-axlab--y { display: none; }
-#impedance .imp-svg.is-narrow .imp-cur__tag { display: none; }
 #impedance .imp-riser { fill: none; stroke: #ffc45e; stroke-width: 1.6; stroke-dasharray: 3 2; }
 #impedance .viz .imp-riser-t { fill: #ffc45e; font-size: calc(10.5px * var(--k)); }
 #impedance .imp-lvmk__l { stroke: rgba(67, 230, 168, 0.5); stroke-dasharray: 2 3; }
@@ -205,6 +207,8 @@
 
 @media (max-width: 1100px) {
   #impedance .imp-main { grid-template-columns: minmax(0, 1fr); }
+  #impedance .imp-live__grid { grid-template-columns: minmax(0, 1fr) 76px minmax(0, 1fr); }
+  #impedance .imp-net__svg { width: 76px; height: 190px; }
   #impedance .imp-row2 { grid-template-columns: minmax(0, 1fr); }
   #impedance .imp-specs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
@@ -214,6 +218,8 @@
   #impedance .imp-count { margin-left: 0; }
 }
 @media (max-width: 560px) {
+  #impedance .imp-3d { height: 290px; }
+  #impedance .imp-follow { top: 4px; right: 8px; font-size: 11px; }
   #impedance .imp-live__grid { grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr); gap: 6px; }
   #impedance .imp-net .micro { display: none; }
   #impedance .imp-net__svg { width: 30px; height: 110px; }
@@ -222,7 +228,7 @@
   #impedance .imp-big { font-size: 32px; }
   #impedance .imp-tissue canvas { height: 90px; }
   #impedance .imp-gauge canvas { height: 96px; }
-  #impedance .imp-scope canvas { height: 130px; }
+  #impedance .imp-scope canvas { min-height: 130px; max-height: 130px; }
   #impedance .imp-cmp { font-size: 12.5px; }
   #impedance .imp-tag { margin-left: 4px; }
   #impedance .imp-lv__step { margin-left: 0; }

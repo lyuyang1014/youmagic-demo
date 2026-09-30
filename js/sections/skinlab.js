@@ -5,6 +5,41 @@
 // The engines are classic scripts injected from init(); this module owns time, easing and UI.
 // Everything drawn is a SIMULATION (模拟示意). Collagen readouts interpolate DATA.charts.collagen
 // (values read off the brochure chart, ≈ 估读 · DA p.4 · 实验猪切片研究). Device/biology facts cite IFU/DA pages inline.
+// Primary view: a YM3D skin block (skincube.mjs) on the same master timeline — tip press, RF current, dermal heat,
+// cooling, contraction, week 0→12 collagen & wrinkles; from ④ a twin 治疗前 block slides in for a side-by-side comparison.
+
+import * as THREE from 'three';
+import * as YM from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createSkinCube } from '../ym3d/skincube.mjs';
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built well before they enter the viewport, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
+
+/* Work-around for a ym3d/host.mjs issue: when a mount is released (far off-screen) the host calls
+   renderer.forceContextLoss() and, on the way back, builds the next stage on the SAME canvas, whose context is still
+   lost → createStage throws and the fallback fires (3D gone for good). Each build therefore renders into a fresh
+   sibling canvas under the host's own canvas, which stays on top, context-less and transparent, as the pointer layer. */
+const freshStageLib = (YM) => ({
+  ...YM,
+  createStage(THREE, canvas, opts) {
+    canvas.__ymRC?.remove();
+    const c = document.createElement('canvas');
+    c.className = 'ym3d-rc';
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;';
+    canvas.parentNode.insertBefore(c, canvas);
+    canvas.__ymRC = c;
+    return YM.createStage(THREE, c, opts);
+  },
+});
 
 const LABEL = '模拟示意 · 基于彩页组织学与临床资料的原理可视化，不代表个体实际效果';
 const MAX_DPR = 1.5;
@@ -45,6 +80,18 @@ const STAGES = [
     hint: '彩页 ×2 切片：“胶原蛋白厚度明显增加”',
   },
 ];
+// 3D view labels (anchored to skincube anchors; compliance: no mm / °C, bottom strip is 肌肉层 and is not labelled as a target)
+const L3 = [
+  { k: 'epidermis', zh: '表皮', side: 'l' },
+  { k: 'dermis', zh: '真皮层', side: 'l' },
+  { k: 'subcutis', zh: '皮下组织', side: 'l' },
+  { k: 'heatCore', zh: '真皮加热', side: 'r' },
+  { k: 'cool', zh: '表皮冷却', side: 'l' },
+  { k: 'pad', zh: '中性电极片', side: 'r' },
+  { k: 'typeI', zh: 'Ⅰ 型胶原', side: 'r' },
+  { k: 'typeIII', zh: 'Ⅲ 型胶原', side: 'r' },
+];
+const EDGE3 = { epidermis: 1, dermis: 1, subcutis: 1 }, NOTCH3 = { heatCore: 1, cool: 1, typeI: 1, typeIII: 1 };
 const CIRCLED = ['①', '②', '③', '④', '⑤', '⑥'];
 // every RF shot = 治疗前冷却 → 射频传送 → 治疗后冷却 (IFU p.15) — placed on the master timeline (T units)
 const PULSE = [[0.3, 0.6, 'cool'], [0.6, 1.3, 'rf'], [1.3, 1.85, 'cool']];
@@ -154,7 +201,7 @@ export default {
         <header class="sec-head">
           <span class="eyebrow">SKIN LAB · 由内而外</span>
           <h2 class="h1 sl-h" data-reveal aria-label="由内而外 · 肌肤变化实验室"><span class="sl-h__k" aria-hidden="true">由内而外<i></i></span><span class="grad-text" aria-hidden="true">肌肤变化实验室</span></h2>
-          <p class="lead" data-reveal>拖动时间轴，看一发射频在皮肤里如何展开：6.78 MHz 电流下行、真皮升温与表皮冷却，胶原即刻收缩，第 4 / 12 周胶原新生与重塑，直到皮肤表面的皱纹形态变化。组织切片与皮肤表面两个实时渲染视图同步联动。</p>
+          <p class="lead" data-reveal>拖动时间轴，看一发射频在皮肤里如何展开：6.78 MHz 电流下行、真皮升温与表皮冷却，胶原即刻收缩，第 4 / 12 周胶原新生与重塑，直到皮肤表面的皱纹形态变化。3D 组织块、组织切片与皮肤表面三个实时渲染视图同步联动。</p>
           <p class="sl-sim-head" data-reveal><i aria-hidden="true"></i>${LABEL}</p>
         </header>
       </div>
@@ -180,63 +227,30 @@ export default {
           </div>
 
           <div class="sl-views" data-reveal="scale">
-            <figure class="sl-view sl-view--histo">
-              <canvas class="sl-cv sl-cv--histo" role="img" aria-label="程序化皮肤组织横截面模拟（H&E 染色风格）：随时间轴显示射频加热、表皮冷却、胶原收缩与第 4、12 周胶原新生（模拟示意）"></canvas>
-              <div class="sl-load" aria-hidden="true"><i></i></div>
-              <div class="sl-layers" aria-hidden="true">
-                <span class="sl-ly sl-ly--x2" data-ly="epi">表皮</span>
-                <span class="sl-ly sl-ly--x2" data-ly="derm">真皮层</span>
-                <span class="sl-ly sl-ly--x2 sl-ly--pre" data-ly="dermPre">真皮层</span>
-                <span class="sl-ly sl-ly--x2" data-ly="sub">皮下组织</span>
-                <span class="sl-ly sl-ly--x200" data-ly="epi2">表皮</span>
-                <span class="sl-ly sl-ly--x200" data-ly="pap">真皮乳头层</span>
-                <span class="sl-ly sl-ly--x200" data-ly="ret">真皮网状层</span>
-                <i class="sl-brk sl-brk--now"></i><i class="sl-brk sl-brk--pre"></i>
-              </div>
-              <div class="sl-hud sl-hud--tl">
-                <span class="sl-pill sl-pill--sim" title="${LABEL}">模拟示意</span>
-                <span class="sl-pill sl-pill--mode">H&amp;E · 横截面</span>
-                <span class="sl-mag num" aria-live="off">×2</span>
-              </div>
-              <div class="sl-hud sl-hud--tr">
-                <div class="sl-seg" role="group" aria-label="染色方式">
-                  <button type="button" data-stain="1" aria-pressed="true">明场 H&amp;E</button>
-                  <button type="button" data-stain="0" aria-pressed="false">暗场荧光</button>
-                </div>
-                <div class="sl-seg" role="group" aria-label="放大倍率">
-                  <button type="button" data-mag="auto" aria-pressed="true">自动</button>
-                  <button type="button" data-mag="0" aria-pressed="false">×2</button>
-                  <button type="button" data-mag="1" aria-pressed="false">×200</button>
-                </div>
-              </div>
-              <div class="sl-legend" aria-hidden="true">
-                <span>相对温度</span><i class="sl-legend__bar"></i><span class="sl-legend__lh"><em>低</em><em>高</em></span>
-                <span class="sl-legend__cool"><i></i>表皮冷却</span>
-              </div>
-              <div class="sl-scale" aria-hidden="true"><i class="sl-scale__bar"></i><span class="sl-scale__t num">500 µm</span></div>
-              <div class="sl-rf" aria-hidden="true"><i class="sl-rf__dot"></i><span class="sl-rf__t">射频传送</span><svg class="sl-rf__w" viewBox="0 0 96 16" preserveAspectRatio="none"><path d="M0 8 Q 6 0 12 8 T 24 8 T 36 8 T 48 8 T 60 8 T 72 8 T 84 8 T 96 8 T 108 8 T 120 8"/></svg><b class="num">${data.specs.rfFreq.split(' ±')[0]}</b></div>
-              <span class="sl-side sl-side--l" aria-hidden="true">治疗前</span>
-              <span class="sl-side sl-side--r" aria-hidden="true">当前阶段</span>
-              <div class="sl-split" role="slider" tabindex="0" aria-label="组织切片对比分割线：左侧治疗前，右侧当前阶段" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="治疗前 50%，当前阶段 50%"><span class="sl-split__knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span></div>
-            </figure>
-
-            <div class="sl-col">
-              <figure class="sl-view sl-view--surf">
-                <canvas class="sl-cv sl-cv--surf" role="img" aria-label="程序化皮肤表面微观模拟：射频阶段显示治疗头热区与冷却，第 4 周至第 12 周后表情纹沟槽逐步变浅（模拟示意，不代表个体实际效果）"></canvas>
+            <div class="sl-main">
+              <figure class="sl-view sl-view--3d">
+                <div class="sl-3d" role="img" aria-label="3D 皮肤组织块模拟：随时间轴显示治疗头端按压、射频电流、真皮加热与表皮冷却、胶原即刻收缩；第 4、12 周与治疗前组织块并排对比（模拟示意，可拖动旋转）"></div>
                 <div class="sl-load" aria-hidden="true"><i></i></div>
+                <div class="sl-3l-wrap" aria-hidden="true">${L3.map((l) => `<span class="sl-3l sl-3l--${l.side} sl-3l--${l.k}" data-k="${l.k}"><i></i><b>${l.zh}</b></span>`).join('')}</div>
+                <span class="sl-tw sl-tw--pre" aria-hidden="true">治疗前<small>基线</small></span>
+                <span class="sl-tw sl-tw--now" aria-hidden="true">当前阶段<small class="sl-tw__wk">第 4 周</small></span>
                 <div class="sl-hud sl-hud--tl">
                   <span class="sl-pill sl-pill--sim" title="${LABEL}">模拟示意</span>
-                  <span class="sl-pill sl-pill--smode">皮肤表面 · 微观</span>
+                  <span class="sl-pill sl-pill--3d">3D 组织块 · 非等比例</span>
                 </div>
                 <div class="sl-hud sl-hud--tr">
-                  <span class="sl-dial" aria-hidden="true"><i></i></span>
-                  <span class="sl-pill sl-pill--light">掠射光 · 跟随指针</span>
+                  <div class="sl-seg" role="group" aria-label="染色方式">
+                    <button type="button" data-stain="1" aria-pressed="true">明场 H&amp;E</button>
+                    <button type="button" data-stain="0" aria-pressed="false">暗场荧光</button>
+                  </div>
                 </div>
-                <span class="sl-side sl-side--l" aria-hidden="true">治疗前</span>
-                <span class="sl-side sl-side--r" aria-hidden="true">当前阶段</span>
-                <div class="sl-split" role="slider" tabindex="0" aria-label="皮肤表面对比分割线：左侧治疗前，右侧当前阶段" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="治疗前 50%，当前阶段 50%"><span class="sl-split__knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span></div>
+                <div class="sl-rf" aria-hidden="true"><i class="sl-rf__dot"></i><span class="sl-rf__t">射频传送</span><svg class="sl-rf__w" viewBox="0 0 96 16" preserveAspectRatio="none"><path d="M0 8 Q 6 0 12 8 T 24 8 T 36 8 T 48 8 T 60 8 T 72 8 T 84 8 T 96 8 T 108 8 T 120 8"/></svg><b class="num">${data.specs.rfFreq.split(' ±')[0]}</b></div>
+                <div class="sl-legend" aria-hidden="true">
+                  <span>相对温度</span><i class="sl-legend__bar"></i><span class="sl-legend__lh"><em>低</em><em>高</em></span>
+                  <span class="sl-legend__cool"><i></i>表皮冷却</span>
+                </div>
+                <span class="sl-3hint" aria-hidden="true">拖动旋转</span>
               </figure>
-
               <div class="sl-read">
                 <div class="sl-read__row">
                   <div class="sl-stat sl-stat--wk">
@@ -258,7 +272,54 @@ export default {
                 <div class="sl-chart">${chartSvg}</div>
                 <p class="sl-read__note">胶原相对含量（以第 0 周为 1）· <b>据彩页图表估读</b><span class="sl-interp" hidden>，区间为插值</span> · 实验猪切片研究（彩页 第 4 页）</p>
               </div>
+            </div>
 
+            <div class="sl-col">
+              <figure class="sl-view sl-view--histo">
+                <canvas class="sl-cv sl-cv--histo" role="img" aria-label="程序化皮肤组织横截面模拟（H&E 染色风格）：随时间轴显示射频加热、表皮冷却、胶原收缩与第 4、12 周胶原新生（模拟示意）"></canvas>
+                <div class="sl-load" aria-hidden="true"><i></i></div>
+                <div class="sl-layers" aria-hidden="true">
+                  <span class="sl-ly sl-ly--x2" data-ly="epi">表皮</span>
+                  <span class="sl-ly sl-ly--x2" data-ly="derm">真皮层</span>
+                  <span class="sl-ly sl-ly--x2 sl-ly--pre" data-ly="dermPre">真皮层</span>
+                  <span class="sl-ly sl-ly--x2" data-ly="sub">皮下组织</span>
+                  <span class="sl-ly sl-ly--x200" data-ly="epi2">表皮</span>
+                  <span class="sl-ly sl-ly--x200" data-ly="pap">真皮乳头层</span>
+                  <span class="sl-ly sl-ly--x200" data-ly="ret">真皮网状层</span>
+                  <i class="sl-brk sl-brk--now"></i><i class="sl-brk sl-brk--pre"></i>
+                </div>
+                <div class="sl-hud sl-hud--tl">
+                  <span class="sl-pill sl-pill--sim" title="${LABEL}">模拟示意</span>
+                  <span class="sl-pill sl-pill--mode">H&amp;E · 横截面</span>
+                  <span class="sl-mag num" aria-live="off">×2</span>
+                </div>
+                <div class="sl-hud sl-hud--tr">
+                  <div class="sl-seg" role="group" aria-label="放大倍率">
+                    <button type="button" data-mag="auto" aria-pressed="true">自动</button>
+                    <button type="button" data-mag="0" aria-pressed="false">×2</button>
+                    <button type="button" data-mag="1" aria-pressed="false">×200</button>
+                  </div>
+                </div>
+                <div class="sl-scale" aria-hidden="true"><i class="sl-scale__bar"></i><span class="sl-scale__t num">500 µm</span></div>
+                <span class="sl-side sl-side--l" aria-hidden="true">治疗前</span>
+                <span class="sl-side sl-side--r" aria-hidden="true">当前阶段</span>
+                <div class="sl-split" role="slider" tabindex="0" aria-label="组织切片对比分割线：左侧治疗前，右侧当前阶段" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="治疗前 50%，当前阶段 50%"><span class="sl-split__knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span></div>
+              </figure>
+              <figure class="sl-view sl-view--surf">
+                <canvas class="sl-cv sl-cv--surf" role="img" aria-label="程序化皮肤表面微观模拟：射频阶段显示治疗头热区与冷却，第 4 周至第 12 周后表情纹沟槽逐步变浅（模拟示意，不代表个体实际效果）"></canvas>
+                <div class="sl-load" aria-hidden="true"><i></i></div>
+                <div class="sl-hud sl-hud--tl">
+                  <span class="sl-pill sl-pill--sim" title="${LABEL}">模拟示意</span>
+                  <span class="sl-pill sl-pill--smode">皮肤表面 · 微观</span>
+                </div>
+                <div class="sl-hud sl-hud--tr">
+                  <span class="sl-dial" aria-hidden="true"><i></i></span>
+                  <span class="sl-pill sl-pill--light">掠射光 · 跟随指针</span>
+                </div>
+                <span class="sl-side sl-side--l" aria-hidden="true">治疗前</span>
+                <span class="sl-side sl-side--r" aria-hidden="true">当前阶段</span>
+                <div class="sl-split" role="slider" tabindex="0" aria-label="皮肤表面对比分割线：左侧治疗前，右侧当前阶段" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="治疗前 50%，当前阶段 50%"><span class="sl-split__knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span></div>
+              </figure>
               <blockquote class="sl-quote">
                 <p class="sl-quote__q"></p>
                 <footer class="sl-quote__src tag-src"></footer>
@@ -296,7 +357,7 @@ export default {
     const $$ = (s, el = root) => [...el.querySelectorAll(s)];
     const stage = $('.sl-stage');
     const viewH = $('.sl-view--histo'), viewS = $('.sl-view--surf');
-    const cvH = $('.sl-cv--histo'), cvS = $('.sl-cv--surf');
+    let cvH = $('.sl-cv--histo'), cvS = $('.sl-cv--surf');   // replaced by fresh canvases when the engines are released
 
     /* ---------------- state ---------------- */
     const S = {
@@ -648,13 +709,30 @@ export default {
       createEngines();
       return !!fxH;
     }
-    // create just before the section scrolls in (shader compile off the critical path)
-    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); enginesLoaded.then(createEngines); } }, { rootMargin: '120% 0px' });
-    io.observe(root);
+    // WebGL budget (same policy as ym3d/host.mjs mount3D): the two engine contexts are created just before the section
+    // scrolls in (shader compile off the critical path) and fully released (context lost + fresh canvas) once it is far away
+    const near = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) enginesLoaded.then(createEngines); }, { rootMargin: '120% 0px' });
+    const far = new IntersectionObserver((es) => { if (es.every((e) => !e.isIntersecting)) releaseEngines(); }, { rootMargin: '220% 0px' });
+    near.observe(root); far.observe(root);
     // GPU context loss: hide the (black) canvas behind the loader, re-render as soon as the engine has re-initialised
-    for (const [cv, view] of [[cvH, viewH], [cvS, viewS]]) {
-      cv.addEventListener('webglcontextlost', () => view.classList.add('is-lost'));
-      cv.addEventListener('webglcontextrestored', () => { view.classList.remove('is-lost'); sig.fill(NaN); sigSPrev.fill(NaN); kick(); });
+    const lostAC = new Map();
+    function bindLost(cv, view) {
+      const ac = new AbortController(); lostAC.set(cv, ac);
+      cv.addEventListener('webglcontextlost', () => view.classList.add('is-lost'), { signal: ac.signal });
+      cv.addEventListener('webglcontextrestored', () => { view.classList.remove('is-lost'); sig.fill(NaN); sigSPrev.fill(NaN); kick(); }, { signal: ac.signal });
+    }
+    bindLost(cvH, viewH); bindLost(cvS, viewS);
+    function releaseEngines() {
+      if (!fxH && !fxS) return;
+      fxH?.dispose(); fxS?.dispose(); fxH = fxS = null;
+      const fresh = (cv, view) => {
+        lostAC.get(cv)?.abort(); lostAC.delete(cv);
+        try { (cv.getContext('webgl2') || cv.getContext('webgl'))?.getExtension('WEBGL_lose_context')?.loseContext(); } catch (_) { /* already gone */ }
+        const n = cv.cloneNode(false); cv.replaceWith(n); bindLost(n, view); view.classList.remove('is-lost');
+        return n;
+      };
+      cvH = fresh(cvH, viewH); cvS = fresh(cvS, viewS);
+      root.classList.remove('sl-ready');
     }
 
     /* ---------------- layer labels (tissue-anchored DOM, via worldToCss) ---------------- */
@@ -709,6 +787,204 @@ export default {
       placeBracket(brkPre, L0.junction, L0.dermisBase, aPre);
       placeLabel(LY.dermPre, (L0.junction + L0.dermisBase) * 0.5, aPre);
     }
+
+    /* ---------------- 3D view (YM3D skincube · primary) ---------------- */
+    // Reads the same master timeline (S.T) and toggles as the two engines: current chip → current, 热成像 → translucent
+    // dermis around the heat, stain seg → H&E / dark-field, Ⅰ/Ⅲ chips → fibre highlight. One WebGL context via mount3D.
+    const view3 = $('.sl-view--3d'), gl3 = $('.sl-3d');
+    const twPre = $('.sl-tw--pre'), twNow = $('.sl-tw--now'), twWk = $('.sl-tw__wk');
+    const lab3 = L3.map((l) => ({ ...l, el: $(`.sl-3l[data-k="${l.k}"]`), a: -1, tx: '', bw: 0 }));
+    // camera keys at the six milestones (T = 0..5): overview → RF close-up → notch macro → twin blocks → from above
+    const CAM3 = [
+      { ty: -0.72, r: 14.4, az: 0.62, el: 0.40 },
+      { ty: -0.70, r: 11.8, az: 0.74, el: 0.32 },
+      { ty: -0.62, r: 8.6, az: 0.80, el: 0.21 },
+      { ty: -1.00, r: 17.8, az: 0.30, el: 0.34 },
+      { ty: -0.90, r: 17.2, az: 0.24, el: 0.28 },
+      { ty: -0.80, r: 17.9, az: 0.10, el: 0.84 },
+    ];
+    const CK3 = ['ty', 'r', 'az', 'el'];
+    const V3 = {
+      w: 2, h: 2, cam: { ...CAM3[0] }, px: 0, py: 0, sig: new Float64Array(20).fill(NaN), vals: new Float64Array(20),
+      dragAt: -1e9, dragK: -1, dragged: false, wk: '', twA: -1, gov: { n: 0, acc: 0, skip: 40, done: false },
+      card: { w: 0, h: 0 },  // readout card overlaying the lower-left corner (desktop) — labels keep clear of it
+    };
+    const readEl = $('.sl-read');
+    new ResizeObserver(() => {
+      const over = getComputedStyle(readEl).position === 'absolute';
+      V3.card.w = over ? readEl.offsetWidth + 12 : 0; V3.card.h = over ? readEl.offsetHeight + 12 : 0; V3.sig.fill(NaN);
+    }).observe(readEl);
+    new ResizeObserver((es) => { for (const e of es) { V3.w = Math.max(2, e.contentRect.width); V3.h = Math.max(2, e.contentRect.height); } V3.sig.fill(NaN); lab3.forEach((l) => { l.bw = 0; }); }).observe(view3);
+    const fillC = curve([[0, 0.5], [0.7, 0.18], [1.6, 0.2], [2.1, 0.5], [3.0, 0.85], [4.3, 0.85], [4.9, 0.55]]);
+    const PA = { t: 0, tip: 1, tipPress: 0, current: 0, heat: 0, cool: 0, contraction: 0, week: 0, wrinkle: 1, cutaway: 1, fibreFill: 0.5, xray: 0, pad: 0, stain: 1, highlight: 0, highlightAmount: 0 };
+    const PB = { t: 0, tip: 0, tipPress: 0, current: 0, heat: 0, cool: 0, contraction: 0, week: 0, wrinkle: 1, cutaway: 1, fibreFill: 0.5, xray: 0, pad: 0, stain: 1, highlight: 0, highlightAmount: 0 };
+    const camT = { ty: 0, r: 0, az: 0, el: 0 };
+    const _p = new THREE.Vector3();
+    function camAt(T) {
+      T = clamp(T, 0, LAST);
+      const i = Math.min(LAST - 1, Math.floor(T)), f = sstep(0.04, 0.96, T - i), a = CAM3[i], b = CAM3[i + 1];
+      for (const k of CK3) camT[k] = a[k] + (b[k] - a[k]) * f;
+    }
+    function build3(stage) {
+      stage.lights.key.position.set(5, 8, 6); stage.lights.key.intensity = 2.4; stage.lights.rim.intensity = 2.2;
+      stage.renderer.toneMappingExposure = 0.92;
+      // opaque painted backdrop (a transparent stage lets additive sprites write alpha → dark squares over the page)
+      const bgc = document.createElement('canvas'); bgc.width = 640; bgc.height = 400;
+      { const g = bgc.getContext('2d'); g.fillStyle = '#0a0910'; g.fillRect(0, 0, 640, 400);
+        let gr = g.createRadialGradient(330, 250, 10, 330, 250, 360); gr.addColorStop(0, 'rgba(138,92,240,0.2)'); gr.addColorStop(1, 'rgba(138,92,240,0)'); g.fillStyle = gr; g.fillRect(0, 0, 640, 400);
+        gr = g.createRadialGradient(560, 40, 5, 560, 40, 240); gr.addColorStop(0, 'rgba(67,230,168,0.07)'); gr.addColorStop(1, 'rgba(67,230,168,0)'); g.fillStyle = gr; g.fillRect(0, 0, 640, 400); }
+      const bgt = new THREE.CanvasTexture(bgc); bgt.colorSpace = THREE.SRGBColorSpace; stage.scene.background = bgt;
+      const fg = new THREE.CircleGeometry(22, 72), fm = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, uniforms: { uC: { value: new THREE.Color(YM.BRAND.violetDeep) } },
+        vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+        fragmentShader: 'uniform vec3 uC; varying vec2 vP; void main(){ float r = length(vP * vec2(0.62, 1.0)); gl_FragColor = vec4(uC * 0.6, 0.85 * exp(-r*r*0.026)); }',
+      });
+      const floor = new THREE.Mesh(fg, fm); floor.rotation.x = -Math.PI / 2; floor.position.y = -3.46; stage.scene.add(floor);
+      const sgeo = new THREE.PlaneGeometry(60, 40), smat = new THREE.ShadowMaterial({ opacity: 0.35 });
+      const sf = new THREE.Mesh(sgeo, smat); sf.rotation.x = -Math.PI / 2; sf.position.y = -2.345; sf.receiveShadow = true; stage.scene.add(sf);
+      // soft contact shadow under each block once the pad has slid away (the tissue slabs do not cast shadows)
+      const bm = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uA: { value: 0 } },
+        vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+        fragmentShader: 'uniform float uA; varying vec2 vP; void main(){ vec2 q = abs(vP) - vec2(1.85); float d = length(max(q,0.)) + min(max(q.x,q.y),0.); gl_FragColor = vec4(0.,0.,0., uA * 0.55 * exp(-max(d,0.)*2.4) * smoothstep(-1.9, -0.2, -max(d,0.) - 0.1)); }' });
+      const bgeo = new THREE.PlaneGeometry(7, 7);
+      const blobA = new THREE.Mesh(bgeo, bm), blobB = new THREE.Mesh(bgeo, bm);
+      for (const b of [blobA, blobB]) { b.rotation.x = -Math.PI / 2; b.position.y = -2.335; b.renderOrder = 1; }
+      const A = createSkinCube(THREE, { lib: YM, seed: 7, collagen: Cg });             // 当前阶段
+      const B = createSkinCube(THREE, { lib: YM, seed: 7, collagen: Cg, pad: false }); // 治疗前 (same specimen, week 0)
+      const gA = new THREE.Group(), gB = new THREE.Group();
+      gA.add(A.object3d, blobA); gB.add(B.object3d, blobB); stage.scene.add(gA, gB);
+      V3.sig.fill(NaN); Object.assign(V3.gov, { n: 0, acc: 0, skip: 40, done: false });
+      view3.classList.add('is-ready');
+      return { A, B, gA, gB, sf, floor, bm, junk: [fg, fm, sgeo, smat, bgt, bm, bgeo] };
+    }
+    function frame3(st, stage, t, dt, api) {
+      const T = S.T, snap = reduced || (dt === 0 && V3.sig[0] !== V3.sig[0]);
+      const kf = (rate) => (snap ? 1 : 1 - Math.exp(-rate * dt));
+      const tw = sstep(2.25, 2.9, T);                    // twin-block comparison factor
+      const heat = CV.heat(T) * (S.thermal ? 1 : 0.94), cool = CV.cool(T), week = CV.week(T);
+      // ---- 当前阶段 block ----
+      PA.t = reduced ? 1.2 : t;
+      PA.tip = 1 - sstep(2.0, 2.4, T);
+      PA.tipPress = sstep(0.12, 0.34, T) * (1 - 0.4 * sstep(1.85, 2.05, T));
+      if (S.curOverride) PA.tipPress = Math.max(PA.tipPress, sstep(0, 0.4, S.cur));   // 电流路径 chip: current needs contact
+      PA.current = S.cur; PA.heat = heat; PA.cool = cool; PA.contraction = CV.contr(T); PA.week = week;
+      PA.wrinkle = CV.wrinkle(T); PA.cutaway = 1 - 0.72 * sstep(4.2, 4.9, T); PA.fibreFill = fillC(T);
+      PA.xray = S.thermal ? 0.5 * sstep(0.02, 0.25, heat) : 0;
+      PA.pad = Math.max(sstep(0.25, 0.55, T) * (1 - sstep(1.9, 2.3, T)), S.curOverride ? sstep(0, 0.3, S.cur) * (1 - tw) : 0);
+      PA.stain = S.stain; PA.highlight = S.hl; PA.highlightAmount = S.hl ? S.hlAmt : 0;
+      st.A.update(PA);
+      // ---- 治疗前 twin (same specimen at week 0) ----
+      st.gB.visible = tw > 0.002;
+      if (st.gB.visible) {
+        PB.t = PA.t; PB.wrinkle = 1; PB.cutaway = PA.cutaway; PB.fibreFill = PA.fibreFill; PB.stain = PA.stain;
+        PB.highlight = PA.highlight; PB.highlightAmount = PA.highlightAmount;
+        st.B.update(PB);
+      }
+      const e = sstep(0, 1, tw);
+      st.gA.position.x = 2.65 * e;
+      st.gB.position.x = -2.65 * e - 7 * (1 - e);
+      st.gB.position.y = -0.6 * (1 - e);
+      st.sf.position.y = tw > 0.5 ? -2.345 : -3.455;   // contact shadow: under the blocks once the pad has gone
+      st.floor.position.y = st.sf.position.y - 0.005;
+      st.bm.uniforms.uA.value = sstep(0.3, 1, tw);
+
+      // ---- camera: timeline keys + drag + parallax ----
+      camAt(T);
+      const kc = kf(S.dragRail ? 8 : 4);
+      for (const k of CK3) { const dd = camT[k] - V3.cam[k]; V3.cam[k] = Math.abs(dd) < 2e-4 ? camT[k] : V3.cam[k] + dd * kc; }
+      const d = api.drag, ms = Math.round(S.Tt);
+      if (d.active) { V3.dragAt = t; V3.dragK = ms; if (!V3.dragged) { V3.dragged = true; view3.classList.add('is-dragged'); } }
+      else if ((V3.dragK !== ms || t - V3.dragAt > 7) && (d.azimuth || d.elevation)) {
+        const kr = kf(1.4); d.azimuth -= d.azimuth * kr; d.elevation -= d.elevation * kr;
+        if (Math.abs(d.azimuth) < 1e-3 && Math.abs(d.elevation) < 1e-3) d.azimuth = d.elevation = 0;
+      }
+      const par = !reduced && api.pointer.inside && !d.active;
+      V3.px += ((par ? api.pointer.x * 0.06 : 0) - V3.px) * kf(3);
+      V3.py += ((par ? -api.pointer.y * 0.035 : 0) - V3.py) * kf(3);
+      if (!par && Math.abs(V3.px) < 1e-4 && Math.abs(V3.py) < 1e-4) V3.px = V3.py = 0;
+      const asp = V3.w / V3.h, fit = asp < 1.35 ? Math.pow(1.35 / asp, 0.9) : 1;
+      const c = V3.cam, az = c.az + d.azimuth + V3.px, el = clamp(c.el + d.elevation + V3.py, -0.12, 1.3);
+      const ty = c.ty - (fit - 1) * 0.4, rr = c.r * fit;
+
+      // ---- render only on change (or while current / heat / cooling animate) ----
+      const anim = (S.cur > 1e-3 || heat > 1e-3 || cool > 1e-3) && !reduced;
+      const v = V3.vals;
+      v[0] = T; v[1] = S.cur; v[2] = S.stain; v[3] = S.hl + S.hlAmt; v[4] = S.thermal ? 1 : 0; v[5] = az; v[6] = el; v[7] = ty; v[8] = rr;
+      v[9] = V3.w; v[10] = V3.h; v[11] = anim ? t : 0; v[12] = PA.pad; v[13] = V3.card.w;
+      let ch = false, chP = false;
+      for (let i = 0; i < 14; i++) if (v[i] !== V3.sig[i]) { ch = true; if (i !== 11) chP = true; V3.sig[i] = v[i]; }
+      if (!ch) return;
+      // time-only animation (current flow / heat shimmer / mist) refreshes at ½ rate — this section also runs the
+      // histology + surface engines; scrubbing, dragging and any parameter change still render every frame
+      if (!chP && (V3.odd = !V3.odd)) return;
+      stage.orbit({ target: [0, ty, 0], radius: rr, azimuth: az, elevation: el });
+      // lens shift: keep the blocks clear of the readout card that overlays the lower-left corner on desktop
+      const ov = V3.card.w > 0, ox = ov ? lerp(0.12, 0.03, tw) * V3.w : 0, oy = ov ? lerp(0.05, 0.11, tw) * V3.h : 0;
+      if (ox || oy) stage.camera.setViewOffset(V3.w, V3.h, -ox, oy, V3.w, V3.h); else if (stage.camera.view) stage.camera.clearViewOffset();
+      // raking key light for ⑥ (surface relief of the expression lines)
+      const rk = sstep(4.15, 4.9, T);
+      stage.lights.key.position.set(lerp(5, -7.5, rk), lerp(8, 2.8, rk), lerp(6, 2.5, rk));
+      stage.render();
+      place3(st, stage, T, tw, heat, cool, week);
+      const G = V3.gov; // adaptive resolution (retina): sustained < ~33 fps while animating → 1× once
+      if (!G.done && !reduced && dt > 0 && stage.renderer.getPixelRatio() > 1) {
+        if (G.skip > 0) G.skip--;
+        else { G.acc += dt; if (++G.n >= 90) { if (G.acc / G.n > 0.03) { G.done = true; stage.renderer.setPixelRatio(1); stage.setSize(Math.round(V3.w), Math.round(V3.h)); } G.n = 0; G.acc = 0; } }
+      }
+    }
+    function proj(stage, out) { out.project(stage.camera); return out.z < 1; }
+    function place3(st, stage, T, tw, heat, cool, week) {
+      const w = V3.w, h = V3.h, top = w < 560 ? 88 : 54;
+      const base = tw > 0.5 ? st.B : st.A;
+      const hlShow = (k) => S.hlT === k || (T > 2.7 && T < 4.45 && !S.thermal);
+      for (const l of lab3) {
+        let a = 0, cube = st.A;
+        switch (l.k) {
+          case 'epidermis': case 'dermis': case 'subcutis': a = 1; cube = base; break;
+          case 'heatCore': a = heat > 0.15 ? 1 : 0; break;
+          case 'cool': a = cool > 0.2 ? 1 : 0; break;
+          case 'pad': a = S.cur > 0.3 && PA.pad > 0.5 ? 1 : 0; break;
+          case 'typeI': a = hlShow(1) && tw > 0.8 || S.hlT === 1 ? 1 : 0; break;
+          case 'typeIII': a = hlShow(3) && tw > 0.8 || S.hlT === 3 ? 1 : 0; break;
+        }
+        if (a) {
+          cube.anchor(l.k, _p);
+          // never show a DOM label through the block when orbited: layer anchors sit on the front-left edge (x = −2, z = +2
+          // of each block), heat / collagen / cooling inside the front-right notch of the 当前阶段 block
+          const cp = stage.camera.position;
+          if (EDGE3[l.k] ? !(cp.z > _p.z || cp.x < _p.x) : NOTCH3[l.k] && cp.x - st.gA.position.x < 1 && cp.z < 1) a = 0;
+          else if (!proj(stage, _p)) a = 0;
+          else {
+            const x = (_p.x * 0.5 + 0.5) * w, y = (-_p.y * 0.5 + 0.5) * h;
+            if (!l.bw) l.bw = l.el.lastElementChild.offsetWidth || 70;
+            const room = l.side === 'l' ? x - l.bw - 24 : w - x - l.bw - 24;
+            const inCard = x - (l.side === 'l' ? l.bw + 24 : 0) < V3.card.w + 8 && y > h - V3.card.h - 16;
+            if (room < 4 || y < top || y > h - 24 || inCard) a = 0;
+            else { const tx = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0)`; if (tx !== l.tx) { l.tx = tx; l.el.style.transform = tx; } }
+          }
+        }
+        if (a !== l.a) { l.a = a; l.el.classList.toggle('is-on', !!a); }
+      }
+      // twin tags ride above each block
+      const tagA = tw > 0.6 ? 1 : 0;
+      if (tagA) {
+        for (const [g, el] of [[st.gB, twPre], [st.gA, twNow]]) {
+          _p.set(g.position.x, 0.2, -2.1); proj(stage, _p);
+          el.style.transform = `translate3d(${((_p.x * 0.5 + 0.5) * w).toFixed(1)}px,${Math.max(top + 44, (-_p.y * 0.5 + 0.5) * h - 14).toFixed(1)}px,0) translate(-50%,-100%)`;
+        }
+        const wk = T > 4.6 ? `第 ${Math.round(week)} 周 · 皮肤表面` : `第 ${Math.round(week)} 周`;
+        if (wk !== V3.wk) { V3.wk = wk; twWk.textContent = wk; }
+      }
+      if (tagA !== V3.twA) { V3.twA = tagA; view3.classList.toggle('is-twin', !!tagA); }
+    }
+    const m3 = mount3D(gl3, {
+      THREE, stageLib: precompileLib(freshStageLib(YM)), dpr: 1.25, draggable: true,
+      stageOpts: { fov: 30, background: 0x0a0910, exposure: 0.92 },
+      build: build3,
+      frame: frame3,
+      dispose(st) { st?.A?.dispose(); st?.B?.dispose(); st?.junk?.forEach((x) => x.dispose()); view3.classList.remove('is-ready'); },
+      fallback() { view3.classList.add('is-nogl'); view3.insertAdjacentHTML('beforeend', '<div class="sl-nogl-msg sl-nogl-msg--s"><p class="small">3D 组织块需要 WebGL · 可查看右侧组织切片与皮肤表面模拟</p></div>'); },
+    });
 
     /* ---------------- frame ---------------- */
     let loopCtl = null;
@@ -820,16 +1096,24 @@ export default {
       sig[6] = HP.highlight; sig[7] = HP.highlightAmount; sig[8] = HP.magnification; sig[9] = HP.split; sig[10] = HP.isotherms ? 1 : 0;
       let chH = false;
       for (let i = 0; i < 11; i++) if (sig[i] !== sig[12 + i]) { chH = true; sig[12 + i] = sig[i]; }
-      if (chH || (liveH && !reduced) || (!reduced && S.frame % 3 === 0)) fxH.render(HP);
-      updateScale();
-      updateLayers(week, S.mag, hVis); // after render: worldToCss reads the view of the frame just drawn
-
+      // secondary panels: while only time-driven effects animate (current / heat shimmer), refresh at ½ rate — the 3D block
+      // is the primary view and shares the GPU budget; any parameter change still renders immediately
       sigS[0] = SP.wrinkle; sigS[1] = SP.texture; sigS[2] = SP.heat; sigS[3] = SP.cool; sigS[4] = SP.tip ? 1 : 0; sigS[5] = SP.split;
       sigS[6] = SP.light; sigS[7] = SP.elevation; sigS[8] = SP.tilt; sigS[9] = S.thermal ? 1 : 0;
       let chS = false;
       for (let i = 0; i < 10; i++) if (sigSPrev[i] !== sigS[i]) { chS = true; sigSPrev[i] = sigS[i]; }
       const liveS = SP.heat > 0.003 || SP.cool > 0.003;
-      if (chS || (liveS && !reduced) || (!reduced && S.frame % 3 === 1)) fxS.render(SP);
+      // integration QA: while the timeline is scrubbed both panels change every frame; together with the 3D block that
+      // exceeded the frame budget (~⅓ of scrub frames > 20 ms at 1440). Interleave them (histology on even frames,
+      // surface on odd) while both are dirty — a pending flag guarantees the last state is always drawn.
+      if (chH) S.pendH = true;
+      if (chS) S.pendS = true;
+      const both = !reduced && S.pendH && S.pendS;
+      if ((S.pendH && (!both || S.frame % 2 === 0)) || (liveH && !reduced && S.frame % 2 === 0) || (!reduced && S.frame % 3 === 0)) { fxH.render(HP); S.pendH = false; }
+      updateScale();
+      updateLayers(week, S.mag, hVis); // after render: worldToCss reads the view of the frame just drawn
+
+      if ((S.pendS && (!both || S.frame % 2 === 1)) || (liveS && !reduced && S.frame % 2 === 1) || (!reduced && S.frame % 3 === 1)) { fxS.render(SP); S.pendS = false; }
 
       // adaptive resolution: while the cross-section is changing (scrub / transitions), a loop that sustains
       // < ~33 fps for ~120 such frames drops both engines to 1× once (hi-dpi screens only; dpr is capped at 1.5)
@@ -854,6 +1138,18 @@ export default {
     /* ---------------- loop (visible-only, paused in hidden tabs) ---------------- */
     setCaption(0);
     syncChips(false);
+    // integration QA: the quote box grew one line for ③ (plain 原理示意 text) and shrank again for ④, which resized the
+    // histology + surface WebGL engines mid-scrub (2 × ~90 ms hitches). Reserve the tallest quote once (init / resize).
+    const fitQuote = () => {
+      const keep = [quoteQ.textContent, quoteSrc.textContent, quoteEl.className];
+      quoteEl.style.minHeight = '';
+      let mx = 0;
+      STAGES.forEach((s, k) => { setCaption(k); mx = Math.max(mx, quoteEl.offsetHeight); });
+      [quoteQ.textContent, quoteSrc.textContent, quoteEl.className] = keep;
+      setCaption(Math.max(0, S.k));
+      if (mx > 0) quoteEl.style.minHeight = mx + 'px';
+    };
+    fitQuote(); document.fonts?.ready.then(fitQuote); ctx.lib.onResize(fitQuote);
     if (!reduced) {
       loopCtl = ctx.lib.visibleLoop(stage, (dt) => frame(dt));
       let wasRunning = false;
@@ -873,6 +1169,7 @@ export default {
         jump: (T) => { goTo(T, { smooth: false }); S.Tt = clamp(T, 0, LAST); S.snapNext = true; if (!reduced) frame(0); },
         set: (o) => { Object.assign(S, o); kick(); },
         get engines() { return { fxH, fxS }; },
+        get m3() { return m3; },
         get dpr() { return dpr; },
         degrade,
       },

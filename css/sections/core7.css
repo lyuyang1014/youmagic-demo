@@ -20,7 +20,12 @@
   display: grid; grid-template-columns: minmax(0, 1.28fr) minmax(0, 0.82fr); gap: clamp(20px, 3vw, 48px); align-items: center;
 }
 #core7 .c7-stage { position: relative; width: 100%; aspect-ratio: 1.06 / 1; max-height: 820px; margin: 0 auto; }
-#core7 .c7-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; --ring: 1; }
+#core7 .c7-lines { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; pointer-events: none; --ring: 1; }
+/* 3D console + orbit (mount3D canvas); the image stays as the no-WebGL fallback */
+#core7 .c7-3d { position: absolute; inset: 0; z-index: 1; }
+#core7.is-3d .c7-device, #core7.gl-pending:not(.no-gl) .c7-device { display: none; }
+#core7.no-gl .c7-3d { display: none; }
+#core7.is-3d .c7-link-l { stroke: rgba(255, 255, 255, 0.13); }
 #core7 .c7-ring { fill: none; stroke: var(--line-2); stroke-width: 1; opacity: var(--ring); transform-box: fill-box; transform-origin: center; }
 #core7 .c7-ring--a { stroke: rgba(255, 255, 255, 0.13); }
 #core7 .c7-ring--b { stroke-dasharray: 2 7; stroke: rgba(255, 255, 255, 0.10); animation: c7spin 90s linear infinite; }
@@ -237,6 +242,7 @@
   #core7 .c7-lines, #core7 .c7-nmpa { display: none; }
   #core7 .c7-halo { position: absolute; left: 50%; top: 0; width: 360px; height: 360px; margin: 0 0 0 -180px; }
   #core7 .c7-device { position: relative; grid-column: 1 / -1; justify-self: center; left: auto; right: auto; top: auto; margin: 0 auto 18px; height: 380px; }
+  #core7 .c7-3d { position: relative; inset: auto; grid-column: 1 / -1; height: 400px; margin: -8px 0 14px; }
   #core7 .c7-node {
     position: relative; left: auto; top: auto; width: auto; height: auto; transform: none !important;
     display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 16px; align-items: start;
@@ -263,6 +269,7 @@
   #core7 .c7-word { display: block; margin-bottom: 4px; }
   #core7 .c7-stage { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   #core7 .c7-device { height: 320px; }
+  #core7 .c7-3d { height: 360px; }
   #core7 .c7-halo { width: 300px; height: 300px; margin-left: -150px; }
   #core7 .c7-lock__words { gap: 8px; }
   #core7 .c7-lock__w { font-size: 26px; }

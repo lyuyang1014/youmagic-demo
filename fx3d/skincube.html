@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SkinCube · 皮肤立体切块 — YM3D</title>
+<style>
+  :root { --ink:#07070c; --violet:#8a5cf0; --mint:#43e6a8; --cool:#7fd4ff; --txt:#e9e7f3; --mute:#9a97ad; --line:rgba(255,255,255,.09); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--ink); color: var(--txt); font: 13px/1.4 "PingFang SC", "Noto Sans SC", system-ui, sans-serif; overflow: hidden; }
+  #c { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; touch-action: none; }
+  #c:active { cursor: grabbing; }
+  .hud { position: fixed; left: 28px; top: 24px; pointer-events: none; }
+  .hud h1 { margin: 0; font-weight: 500; font-size: 20px; letter-spacing: .04em; }
+  .hud h1 small { font-size: 12px; color: var(--mute); margin-left: 8px; letter-spacing: .08em; }
+  .sim { margin-top: 6px; font-size: 11px; color: var(--mute); }
+  .panel { position: fixed; right: 18px; top: 18px; bottom: 86px; width: 268px; overflow: auto; padding: 14px 16px; border-radius: 14px;
+    background: rgba(18,17,28,.72); border: 1px solid var(--line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .row { display: grid; grid-template-columns: 78px 1fr 38px; align-items: center; gap: 8px; margin: 6px 0; }
+  .row label { color: var(--mute); font-size: 12px; }
+  .row output { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; color: var(--txt); }
+  input[type=range] { width: 100%; accent-color: var(--violet); }
+  select { width: 100%; background: #15141f; color: var(--txt); border: 1px solid var(--line); border-radius: 6px; padding: 3px; }
+  .sep { height: 1px; background: var(--line); margin: 10px 0; }
+  .presets { position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px; display: flex; gap: 8px; padding: 6px; border-radius: 999px;
+    background: rgba(18,17,28,.72); border: 1px solid var(--line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .presets button { white-space: nowrap; flex: 0 0 auto; border: 0; background: transparent; color: var(--txt); padding: 8px 14px; border-radius: 999px; font: inherit; cursor: pointer; }
+  .presets button:hover { background: rgba(138,92,240,.18); }
+  .presets button.on { background: var(--violet); color: #fff; }
+  .chk { display: flex; gap: 8px; align-items: center; color: var(--mute); font-size: 12px; margin: 6px 0; }
+  .lbl { position: fixed; left: 0; top: 0; pointer-events: none; font-size: 12px; white-space: nowrap; transition: opacity .35s; will-change: transform; }
+  .lbl i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px rgba(255,255,255,.8); }
+  .lbl b { position: absolute; right: 8px; top: -9px; font-weight: 500; letter-spacing: .03em; padding: 1px 0; }
+  .lbl b em { display: block; font-style: normal; font-size: 10px; color: var(--mute); letter-spacing: .06em; }
+  .lbl.r b { right: auto; left: 10px; }
+  .lbl s { position: absolute; top: 0; height: 1px; background: rgba(255,255,255,.45); right: 3px; width: 0; }
+  .shot .panel, .shot .presets { display: none; }
+  .shot .lbl { transition: none; }
+  .lbl b { text-shadow: 0 1px 8px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.8); }
+  @media (max-width: 760px) { .panel { top: auto; bottom: 80px; height: 30vh; width: auto; left: 16px; right: 16px; } .hud h1 small { display: none; } .presets { overflow-x: auto; max-width: calc(100vw - 32px); } }
+</style>
+<script type="importmap">{"imports":{"three":"../vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud"><h1>皮肤立体切块<small>YM3D · SkinCube</small></h1><div class="sim">模拟示意 · 原理可视化，不代表实际组织温度或临床数据</div></div>
+<div class="panel" id="panel"></div>
+<div class="presets" id="presets"></div>
+<div id="labels"></div>
+<script type="module">
+import * as THREE from 'three';
+import * as YM from '../js/ym3d/stage.mjs';
+import { createSkinCube } from '../js/ym3d/skincube.mjs';
+
+const q = new URLSearchParams(location.search);
+const SHOT = q.has('shot');
+if (SHOT) document.body.classList.add('shot');
+const canvas = document.getElementById('c');
+const dpr = Math.min(2, +(q.get('dpr') || Math.min(1.5, devicePixelRatio || 1)));
+const stage = YM.createStage(THREE, canvas, { width: innerWidth, height: innerHeight, dpr, fov: 30, exposure: 0.92, preserveDrawingBuffer: true });
+stage.lights.key.position.set(5, 8, 6);
+stage.lights.key.intensity = 2.4;
+stage.lights.rim.intensity = 2.2;
+
+// floor: soft violet pool + contact shadows
+const floorMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uC: { value: new THREE.Color(YM.BRAND.violetDeep) } },
+  vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+  fragmentShader: 'uniform vec3 uC; varying vec2 vP; void main(){ float r = length(vP); gl_FragColor = vec4(uC * 0.55, 0.9 * exp(-r*r*0.028)); }' });
+const floor = new THREE.Mesh(new THREE.CircleGeometry(16, 64), floorMat); floor.rotation.x = -Math.PI / 2; floor.position.y = -3.46; stage.scene.add(floor);
+const shadowFloor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.35 }));
+shadowFloor.rotation.x = -Math.PI / 2; shadowFloor.position.y = -3.455; shadowFloor.receiveShadow = true; stage.scene.add(shadowFloor);
+
+let histCanvas = null;
+let cube = createSkinCube(THREE, { lib: YM });
+stage.scene.add(cube.object3d);
+
+const DEF = { t: 0, fibreFill: 0, tip: 1, tipPress: 0, current: 0, heat: 0, cool: 0, contraction: 0, week: 0, wrinkle: 1, cutaway: 1, xray: 0, explode: 0, rotate: 0, stain: 1, highlight: 0, faceMix: 1 };
+const CAM = { az: 0.62, el: 0.40, r: 14.5, ty: -0.85 };
+const PRESETS = {
+  before:   { name: '治疗前',   p: { pad: 1, fibreFill: 1, tip: 1, tipPress: 0, current: 0, heat: 0, cool: 0, contraction: 0, week: 0, wrinkle: 1, cutaway: 1, explode: 0, xray: 0 } },
+  rf:       { name: '射频加热', p: { pad: 1, fibreFill: 0, tip: 1, tipPress: 1, current: 1, heat: 1, cool: 0.45, contraction: 0.1, week: 0, wrinkle: 1, cutaway: 1, explode: 0, xray: 0 }, cam: { az: 0.72, el: 0.32, r: 11.5, ty: -0.75 } },
+  cool:     { name: '冷却',     p: { pad: 1, fibreFill: 0, tip: 1, tipPress: 1, current: 0.12, heat: 0.35, cool: 1, contraction: 0.15, week: 0, wrinkle: 1, cutaway: 1, explode: 0, xray: 0 }, cam: { az: 0.72, el: 0.3, r: 10.5, ty: -0.7 } },
+  contract: { name: '即刻收缩', p: { pad: 1, fibreFill: 0, tip: 1, tipPress: 1, current: 0, heat: 0.4, cool: 0.3, contraction: 1, week: 0, wrinkle: 0.9, cutaway: 1, explode: 0, xray: 0 }, cam: { az: 0.78, el: 0.22, r: 8.5, ty: -0.7 } },
+  w4:       { name: '第 4 周',  p: { pad: 0, fibreFill: 1, tip: 0, tipPress: 0, current: 0, heat: 0, cool: 0, contraction: 0, week: 4, wrinkle: 0.62, cutaway: 1, explode: 0, xray: 0 } },
+  w12:      { name: '第 12 周', p: { pad: 0, fibreFill: 1, tip: 0, tipPress: 0, current: 0, heat: 0, cool: 0, contraction: 0, week: 12, wrinkle: 0.3, cutaway: 1, explode: 0, xray: 0 } },
+  wrinkle:  { name: '皱纹变化', p: { pad: 0, tip: 0, tipPress: 0, current: 0, heat: 0, cool: 0, contraction: 0, week: 12, wrinkle: 0.3, cutaway: 0, explode: 0, xray: 0 }, cam: { az: 0.35, el: 0.78, r: 11.5, ty: -0.6 }, anim: 'wrinkle' },
+};
+const SL = [
+  ['t', 't (s)', 0, 20, 0.01], ['tip', '治疗头', 0, 1, 0.01], ['tipPress', '按压', 0, 1, 0.01], ['current', '射频电流', 0, 1, 0.01],
+  ['heat', '真皮加热', 0, 1, 0.01], ['cool', '冷却', 0, 1, 0.01], ['contraction', '即刻收缩', 0, 1, 0.01], ['week', '周数', 0, 12, 0.1],
+  ['wrinkle', '皱纹深度', 0, 1, 0.01], ['cutaway', '剖切窗口', 0, 1, 0.01], ['fibreFill', '胶原支架填充', 0, 1, 0.01], ['xray', '真皮透明', 0, 1, 0.01], ['explode', '分层爆炸', 0, 1, 0.01], ['pad', '中性电极片', 0, 1, 0.01],
+  ['rotate', '转台', -3.1416, 3.1416, 0.01], ['stain', '染色 H&E↔暗场', 0, 1, 0.01],
+];
+const P = { ...DEF };
+let anim = null, play = !SHOT;
+
+// hash state:  #heat=0.8&cool=0.4&az=0.6&el=0.4&r=13&preset=rf
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('preset') && PRESETS[h.get('preset')]) { const pr = PRESETS[h.get('preset')]; Object.assign(P, pr.p); if (pr.cam) Object.assign(CAM, pr.cam); anim = pr.anim || null; }
+  for (const k of Object.keys(DEF)) if (h.has(k)) P[k] = +h.get(k);
+  if (h.has('stainMode')) P.stain = h.get('stainMode') === 'darkfield' ? 0 : 1;
+  for (const k of ['az', 'el', 'r', 'ty']) if (h.has(k)) CAM[k] = +h.get(k);
+  if (h.has('play')) play = h.get('play') !== '0';
+}
+readHash();
+
+// ---------- UI ----------
+const panel = document.getElementById('panel'), inputs = {};
+for (const [k, lab, a, b, st] of SL) {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label>${lab}</label><input type="range" min="${a}" max="${b}" step="${st}"><output></output>`;
+  const inp = row.querySelector('input'), out = row.querySelector('output');
+  inp.value = P[k]; out.textContent = (+P[k]).toFixed(k === 'week' ? 1 : 2);
+  inp.addEventListener('input', () => { P[k] = +inp.value; out.textContent = (+inp.value).toFixed(k === 'week' ? 1 : 2); tween = null; if (k === 'wrinkle') anim = null; });
+  inputs[k] = { inp, out }; panel.appendChild(row);
+}
+panel.insertAdjacentHTML('beforeend', `<div class="sep"></div>
+  <div class="row"><label>高亮</label><select id="hl"><option value="0">无</option><option value="1">Ⅰ 型胶原</option><option value="3">Ⅲ 型胶原</option></select><span></span></div>
+  <label class="chk"><input type="checkbox" id="play" ${play ? 'checked' : ''}> 播放时间 t</label>
+  <label class="chk"><input type="checkbox" id="lbls" checked> 标注</label>
+  <label class="chk"><input type="checkbox" id="hist"> 正面贴 H&E 切片 (histology.js)</label>`);
+document.getElementById('hl').addEventListener('change', (e) => { P.highlight = +e.target.value; });
+document.getElementById('play').addEventListener('change', (e) => { play = e.target.checked; });
+document.getElementById('lbls').addEventListener('change', (e) => { document.getElementById('labels').style.display = e.target.checked ? '' : 'none'; });
+document.getElementById('hist').addEventListener('change', async (e) => { await setHistology(e.target.checked); });
+function syncUI() { for (const k in inputs) { inputs[k].inp.value = P[k]; inputs[k].out.textContent = (+P[k]).toFixed(k === 'week' ? 1 : 2); } }
+
+const presetsEl = document.getElementById('presets');
+let tween = null;
+for (const [id, pr] of Object.entries(PRESETS)) {
+  const b = document.createElement('button'); b.textContent = pr.name; b.dataset.id = id;
+  b.addEventListener('click', () => {
+    for (const x of presetsEl.children) x.classList.toggle('on', x === b);
+    tween = { from: { ...P }, to: { ...P, ...pr.p }, camFrom: { ...CAM }, camTo: { ...CAM, ...(pr.cam || { az: 0.62, el: 0.40, r: 14.5, ty: -0.85 }) }, t0: performance.now(), dur: 1400 };
+    anim = pr.anim || null;
+  });
+  presetsEl.appendChild(b);
+}
+
+// ---------- histology face (optional) ----------
+async function setHistology(on) {
+  if (on && !window.SkinFX) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = '../js/fx/histology.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+  stage.scene.remove(cube.object3d); cube.dispose();
+  if (on) {
+    histCanvas = document.createElement('canvas');
+    const fx = window.SkinFX.Histology.create(histCanvas, { seed: 3, dpr: 1, preserveDrawingBuffer: true });
+    fx.resize(1400, 700); fx.render({ week: P.week, stain: 1, magnification: 0, scaleBar: false, vignette: 0.2, grain: 0.3, isotherms: false });
+    cube = createSkinCube(THREE, { lib: YM, faceCanvas: histCanvas });
+  } else cube = createSkinCube(THREE, { lib: YM });
+  stage.scene.add(cube.object3d);
+}
+
+// ---------- orbit ----------
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, az: CAM.az, el: CAM.el }; canvas.setPointerCapture(e.pointerId); tween = null; });
+canvas.addEventListener('pointermove', (e) => { if (!drag) return; CAM.az = drag.az - (e.clientX - drag.x) * 0.006; CAM.el = Math.max(-0.35, Math.min(1.35, drag.el + (e.clientY - drag.y) * 0.005)); });
+canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); CAM.r = Math.max(6, Math.min(26, CAM.r * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+
+// ---------- labels ----------
+const LBL = [
+  ['epidermis', '表皮', 'Epidermis', () => 1, 'l'], ['dermis', '真皮', 'Dermis', () => 1, 'l'], ['subcutis', '皮下脂肪', 'Subcutis', () => 1, 'l'],
+  ['smas', '肌肉层', 'Muscle', () => 1, 'l'], // compliance: never label/claim SMAS as a treatment target (知识库 §11) ['tipTop', '治疗头端', 'RF electrode', (p) => p.tip > 0.5 ? 1 : 0, 'r'],
+  ['heatCore', '真皮加热区', 'Dermal heating', (p) => p.heat > 0.15 ? 1 : 0, 'r'], ['cool', '表皮冷却', 'Cooling', (p) => p.cool > 0.2 ? 1 : 0, 'r'],
+  ['pad', '中性电极片', 'Return pad', (p) => p.current > 0.2 ? 1 : 0, 'r'],
+  ['typeI', 'Ⅰ 型胶原', 'Type Ⅰ', (p) => p.cutaway > 0.4 && p.heat < 0.15 ? 1 : 0, 'r'], ['typeIII', 'Ⅲ 型胶原', 'Type Ⅲ', (p) => p.cutaway > 0.4 && p.heat < 0.15 ? 1 : 0, 'r'],
+  ['wrinkle', '皱纹', 'Wrinkle', (p) => p.cutaway < 0.3 ? 1 : 0, 'l'],
+];
+const lblRoot = document.getElementById('labels'), lblEls = {};
+for (const [k, zh, en, , side] of LBL) {
+  const d = document.createElement('div'); d.className = 'lbl ' + (side === 'r' ? 'r' : '');
+  d.innerHTML = `<i></i><b>${zh}<em>${en}</em></b>`; d.dataset.side = side; lblRoot.appendChild(d); lblEls[k] = d;
+}
+const _v = new THREE.Vector3();
+function placeLabels(p) {
+  const w = innerWidth, h = innerHeight;
+  for (const [k, , , vis] of LBL) {
+    const el = lblEls[k]; cube.anchor(k, _v); _v.project(stage.camera);
+    const x = (_v.x * 0.5 + 0.5) * w, y = (-_v.y * 0.5 + 0.5) * h;
+    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    // narrow screens: a left-hand label that would run off the edge flips to the right of its anchor
+    if (el.dataset.side !== 'r') { const bw = el.firstElementChild.nextElementSibling.offsetWidth || 60; el.classList.toggle('r', x - bw - 10 < 6); }
+    el.style.opacity = vis(p) && _v.z < 1 ? 1 : 0;
+  }
+}
+
+// ---------- render ----------
+const easeIO = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+function params() {
+  const p = { ...P };
+  if (anim === 'wrinkle') p.wrinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.cos(p.t * 0.9));
+  return p;
+}
+function renderFrame(p = params(), cam = CAM) {
+  cube.update(p);
+  const aspect = stage.camera.aspect, fit = aspect < 1.2 ? Math.pow(1.2 / aspect, 0.85) : 1; // keep the block in frame on portrait screens
+  stage.orbit({ target: [0, cam.ty - (fit - 1) * 0.6, 0], radius: cam.r * fit, azimuth: cam.az, elevation: cam.el });
+  stage.render();
+  placeLabels(p);
+}
+window.__skin = { THREE, stage, get cube() { return cube; }, P, CAM, renderFrame, PRESETS, setHistology,
+  render(p, cam) { renderFrame({ ...DEF, ...p }, { ...CAM, ...(cam || {}) }); return true; } };
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (tween) {
+    const k = easeIO(Math.min(1, (now - tween.t0) / tween.dur));
+    for (const key of Object.keys(tween.to)) if (key !== 't' && typeof tween.to[key] === 'number') P[key] = tween.from[key] + (tween.to[key] - tween.from[key]) * k;
+    for (const key of Object.keys(tween.camTo)) CAM[key] = tween.camFrom[key] + (tween.camTo[key] - tween.camFrom[key]) * k;
+    if (k >= 1) tween = null;
+    syncUI();
+  }
+  if (play) { P.t += dt; if (inputs.t) { inputs.t.inp.value = P.t % 20; inputs.t.out.textContent = P.t.toFixed(2); } }
+  renderFrame();
+  requestAnimationFrame(loop);
+}
+addEventListener('resize', () => { stage.setSize(innerWidth, innerHeight); });
+addEventListener('hashchange', () => { readHash(); syncUI(); });
+if (SHOT) { renderFrame(); window.__ready = true; } else { requestAnimationFrame(loop); window.__ready = true; }
+</script>
+</body>
+</html>

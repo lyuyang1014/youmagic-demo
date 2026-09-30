@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gate to Device</title>
+<meta name="description" content="YM3D gate.mjs demo — 清华园二校门 outline morphs into the YM5 console's rim light and screen ring, in Tsinghua purple, then hands over to the real device model.">
+<style>
+  :root { --bg:#07070c; --panel:#0f1017; --line:#23252f; --ink:#e9ebf1; --mute:#8a90a0; --violet:#8a5cf0; --tsinghua:#9a3fb0; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:13px/1.45 -apple-system,"PingFang SC","Helvetica Neue",sans-serif; }
+  #app { display:grid; grid-template-columns: 1fr 310px; height:100%; }
+  #view { position:relative; overflow:hidden; display:flex; }
+  #view canvas { flex:1 1 auto; width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
+  #view canvas:active { cursor:grabbing; }
+  #hud { position:absolute; left:16px; bottom:14px; color:var(--mute); font-size:12px; pointer-events:none; }
+  #scrub { position:absolute; left:16px; right:16px; bottom:40px; display:flex; gap:10px; align-items:center; }
+  #scrub input { flex:1; accent-color:var(--tsinghua); }
+  #scrub output { width:44px; text-align:right; color:var(--mute); font-variant-numeric:tabular-nums; }
+  aside { background:var(--panel); border-left:1px solid var(--line); padding:16px; overflow:auto; }
+  h1 { font-size:14px; margin:0 0 2px; letter-spacing:.04em; } .sub { color:var(--mute); margin:0 0 14px; font-size:12px; }
+  fieldset { border:1px solid var(--line); border-radius:10px; margin:0 0 12px; padding:10px 12px 8px; }
+  legend { color:var(--mute); padding:0 6px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  label { display:grid; grid-template-columns: 78px 1fr 40px; gap:8px; align-items:center; margin:5px 0; }
+  label.chk { grid-template-columns: 18px 1fr; }
+  label output { color:var(--mute); font-variant-numeric:tabular-nums; text-align:right; }
+  input[type=range] { width:100%; accent-color:var(--violet); }
+  button { background:#171923; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font:inherit; cursor:pointer; }
+  button[aria-pressed=true] { border-color:var(--violet); color:#fff; background:#221a3a; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 6px; } .seg button { flex:1; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:4px; }
+  @media (max-width: 760px) { #app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; } aside { border-left:0; border-top:1px solid var(--line); } }
+  aside code { word-break: break-all; }
+  body.shot aside, body.shot #hud, body.shot #scrub { display:none; } body.shot #app { grid-template-columns: 1fr; }
+</style>
+<script type="importmap">{"imports":{"three":"../vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<div id="app">
+  <div id="view"><canvas id="c"></canvas>
+    <div id="scrub"><button id="play">▶</button><input type="range" id="u" min="0" max="1" step="0.001" aria-label="sequence"><output id="uOut"></output></div>
+    <div id="hud">设计灵感示意 · 拖动旋转 · 滚轮缩放</div></div>
+  <aside>
+    <h1>YM3D · gate.mjs</h1>
+    <p class="sub">清华园二校门 → YM5 主机外观 · <span class="sw" style="background:#660874"></span>清华紫 → <span class="sw" style="background:#8a5cf0"></span>品牌紫</p>
+    <fieldset><legend>Mode</legend>
+      <div class="row seg" id="modes"><button data-m="seq">完整序列 u</button><button data-m="manual">单项参数</button></div>
+      <label>duration<input type="range" id="dur" min="6" max="30" step="0.5"><output></output></label>
+    </fieldset>
+    <fieldset id="fsManual"><legend>Params</legend>
+      <label>purple<input type="range" id="purple" min="0" max="1" step="0.005"><output></output></label>
+      <label>ignite<input type="range" id="ignite" min="0" max="1" step="0.005"><output></output></label>
+      <label>morph<input type="range" id="morph" min="0" max="1" step="0.005"><output></output></label>
+      <label>reveal<input type="range" id="reveal" min="0" max="1" step="0.005"><output></output></label>
+      <label>camera u<input type="range" id="cam" min="0" max="1" step="0.005"><output></output></label>
+    </fieldset>
+    <fieldset><legend>Scene</legend>
+      <label class="chk"><input type="checkbox" id="device"><span>YM5 device (createDevice handoff)</span></label>
+      <label class="chk"><input type="checkbox" id="floor"><span>floor</span></label>
+      <label class="chk"><input type="checkbox" id="guide"><span>overlay target rim (QA)</span></label>
+      <div class="row"><button id="resetCam">reset camera</button></div>
+    </fieldset>
+    <p class="sub">Hash state, e.g. <code>#u=0.55</code> or <code>#mode=manual&amp;purple=1&amp;morph=0.5&amp;cam=0.5</code>; add <code>?shot=1</code> for a chrome-free frame.</p>
+  </aside>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { createStage } from '../js/ym3d/stage.mjs';
+import { createDevice } from '../js/ym3d/device.mjs';
+import { createGateMorph } from '../js/ym3d/gate.mjs';
+
+const Q = new URLSearchParams(location.search), SHOT = Q.has('shot');
+if (SHOT) document.body.classList.add('shot');
+const DEF = { mode: 'seq', u: 0, t: -1, dur: 14, purple: 1, ignite: 1, morph: 0.5, reveal: 0, cam: 0.52, device: 1, floor: 1, guide: 0, daz: 0, del: 0, dr: 1, ty: -1 };
+const S = { ...DEF };
+const parseInto = (str) => { for (const [k, v] of new URLSearchParams(str)) if (k in DEF) S[k] = typeof DEF[k] === 'number' ? parseFloat(v) : v; };
+parseInto(location.hash.slice(1)); parseInto(location.search.slice(1));
+
+// the plaque uses a Kai (楷) face: make sure it is ready before the canvas texture is drawn
+try { await Promise.race([Promise.all([document.fonts.load('bold 100px "Kaiti SC"'), document.fonts.load('bold 100px "STKaiti"')]), new Promise((r) => setTimeout(r, 1200))]); } catch (e) { /* system fallback */ }
+
+const canvas = document.getElementById('c');
+const stage = createStage(THREE, canvas, { width: 800, height: 800, dpr: SHOT ? 1 : Math.min(2, devicePixelRatio || 1), preserveDrawingBuffer: true, exposure: 1.0, fov: 30 });
+const { scene, camera } = stage;
+const key = stage.lights.key;
+// camera-left sequence → key from the right (same side as fx3d/device.html) models the columns
+key.position.set(2.5, 4.1, 3.7); key.color.set(0xfff3e6); key.target.position.set(0, 0.8, 0); scene.add(key.target);
+const KEY_I = 2.7, RIM_I = 0.9; // device-hero values; scaled per frame by gate.deviceBlend() → stageKey / stageRim
+Object.assign(key.shadow.camera, { left: -1.9, right: 1.9, top: 2.0, bottom: -1.4, near: 1, far: 14 }); key.shadow.camera.updateProjectionMatrix(); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.022;
+stage.lights.fill.intensity = 0.2;
+
+// floor: dark satin that dissolves into the stage well before its rim (a low camera compresses the far floor into a
+// visible horizon line otherwise)
+// NB three.js reads alphaMap from the GREEN channel: white-with-varying-alpha canvas pixels upload as g = 1 (unpremultiplied),
+// which silently gave a hard-edged disc. Paint the falloff as opaque grey levels instead.
+const floorTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 512, 512); const gr = g.createRadialGradient(256, 256, 0, 256, 256, 256); gr.addColorStop(0, 'rgb(255,255,255)'); gr.addColorStop(0.28, 'rgb(190,190,190)'); gr.addColorStop(0.5, 'rgb(70,70,70)'); gr.addColorStop(0.72, 'rgb(12,12,12)'); gr.addColorStop(1, 'rgb(0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 512, 512); return new THREE.CanvasTexture(c); })();
+const floor = new THREE.Mesh(new THREE.CircleGeometry(7, 128).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x0c0c12, roughness: 0.82, metalness: 0.0, alphaMap: floorTex, transparent: true, envMapIntensity: 0.3 }));
+floor.receiveShadow = true; scene.add(floor);
+// distance fog in the stage colour melts the far floor into the backdrop (no horizon line at any camera u);
+// the gate's glow shaders ignore fog, the stone / device sit nearer than `near` along the whole camera path
+scene.fog = new THREE.Fog(0x07070c, 8.4, 14);
+
+const device = createDevice(THREE, {});
+scene.add(device.object3d);
+const gate = createGateMorph(THREE, { deviceDims: device.dims });
+scene.add(gate.object3d);
+gate.placeDevice(device.object3d);
+gate.bindDevice(device);
+
+// QA overlay: the device's own rim/screen outline drawn from createDevice geometry (independent of gate.mjs)
+const guide = new THREE.Group(); scene.add(guide);
+{ const d = device.dims, pts = [], rr = d.R - d.lipW - 0.5 * d.fil, z = d.zP + 0.008;
+  for (let i = 0; i <= 64; i++) { const a = Math.PI / 2 - i / 64 * Math.PI / 2; pts.push(new THREE.Vector3(rr * Math.cos(a), d.yTop + rr * Math.sin(a), z)); }
+  for (let i = 0; i <= 64; i++) { const a = -i / 64 * Math.PI; pts.push(new THREE.Vector3(rr * Math.cos(a), d.yBot + rr * Math.sin(a), z)); }
+  for (let i = 0; i <= 64; i++) { const a = Math.PI - i / 64 * Math.PI / 2; pts.push(new THREE.Vector3(rr * Math.cos(a), d.yTop + rr * Math.sin(a), z)); }
+  const m = new THREE.LineBasicMaterial({ color: 0x00ff66, depthTest: false, transparent: true }); const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), m); l.renderOrder = 99; guide.add(l);
+  const cp = []; for (let i = 0; i <= 128; i++) { const a = i / 128 * Math.PI * 2; cp.push(new THREE.Vector3(d.Rs * Math.cos(a), d.yTop + d.Rs * Math.sin(a), d.zP + 0.0045)); }
+  const c2 = new THREE.Line(new THREE.BufferGeometry().setFromPoints(cp), m); c2.renderOrder = 99; guide.add(c2); }
+
+// ---- UI ----
+const ids = ['u', 'dur', 'purple', 'ignite', 'morph', 'reveal', 'cam'], checks = ['device', 'floor', 'guide'];
+const fmt = (v) => (typeof v === 'number' ? v.toFixed(v >= 10 ? 1 : 3) : v);
+function syncUI() {
+  if (S.mode === 'seq') gate.sequence(S.u, seqOut);
+  for (const id of ids) { const el = document.getElementById(id); const v = S.mode === 'seq' && id in seqOut && id !== 'u' ? seqOut[id] : S.mode === 'seq' && id === 'cam' ? S.u : S[id];
+    el.value = v; const out = id === 'u' ? document.getElementById('uOut') : el.parentElement.querySelector('output'); if (out) out.textContent = fmt(v); }
+  for (const id of checks) document.getElementById(id).checked = !!S[id];
+  document.querySelectorAll('#modes button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.m === S.mode)));
+  document.getElementById('fsManual').style.opacity = S.mode === 'manual' ? 1 : 0.55;
+  document.getElementById('play').textContent = playing ? '❚❚' : '▶';
+}
+for (const id of ids) document.getElementById(id).addEventListener('input', (e) => { if (id !== 'u' && id !== 'dur' && S.mode === 'seq') { for (const k of ['purple', 'ignite', 'morph', 'reveal']) S[k] = seqOut[k]; S.cam = S.u; } S[id] = parseFloat(e.target.value); if (id !== 'u' && id !== 'dur') S.mode = 'manual'; else if (id === 'u') S.mode = 'seq'; syncUI(); writeHash(); if (!playing) frame(); });
+for (const id of checks) document.getElementById(id).addEventListener('change', (e) => { S[id] = e.target.checked ? 1 : 0; writeHash(); if (!playing) frame(); });
+document.querySelectorAll('#modes button').forEach((b) => b.addEventListener('click', () => { S.mode = b.dataset.m; syncUI(); writeHash(); frame(); }));
+document.getElementById('resetCam').onclick = () => { S.daz = 0; S.del = 0; S.dr = 1; writeHash(); frame(); };
+let playing = false;
+document.getElementById('play').onclick = () => { playing = !playing; if (playing) { S.mode = 'seq'; if (S.u >= 1) S.u = 0; last = 0; requestAnimationFrame(loop); } syncUI(); };
+function writeHash() { if (SHOT) return; const o = {}; for (const k in DEF) if (S[k] !== DEF[k] && k !== 't') o[k] = typeof S[k] === 'number' ? +S[k].toFixed(3) : S[k]; history.replaceState(null, '', '#' + new URLSearchParams(o)); }
+
+// ---- drag orbit (offsets on top of the sequence camera) ----
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', (e) => { if (!drag) return; const dx = (e.clientX - drag.x) / canvas.clientWidth, dy = (e.clientY - drag.y) / canvas.clientHeight; drag = { x: e.clientX, y: e.clientY };
+  S.daz -= dx * 4; S.del = Math.max(-0.3, Math.min(1.2, S.del + dy * 3)); if (!playing) frame(); });
+canvas.addEventListener('pointerup', () => { drag = null; writeHash(); });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); S.dr = Math.max(0.3, Math.min(2.5, S.dr * Math.exp(e.deltaY * 0.001))); if (!playing) frame(); }, { passive: false });
+
+// ---- render ----
+const seqOut = {}, blendOut = {}, camOut = { target: [0, 0, 0] }, P = {};
+function params() {
+  if (S.mode === 'seq') { gate.sequence(S.u, seqOut); Object.assign(P, seqOut); }
+  else Object.assign(P, { u: undefined, purple: S.purple, ignite: S.ignite, morph: S.morph, reveal: S.reveal });
+  P.t = S.t >= 0 ? S.t : (S.mode === 'seq' ? S.u : S.cam) * S.dur;
+  return P;
+}
+function resize() { stage.setSize(Math.max(1, canvas.clientWidth), Math.max(1, canvas.clientHeight)); }
+function frame() {
+  const p = params();
+  gate.update(p);
+  const b = gate.deviceBlend(p, blendOut);
+  device.object3d.visible = !!S.device && b.visible;
+  device.update({ t: p.t, rimGlow: b.rimGlow, screen: b.screen });
+  key.intensity = KEY_I * b.stageKey; stage.lights.rim.intensity = RIM_I * b.stageRim;
+  floor.visible = !!S.floor; guide.visible = !!S.guide;
+  const c = gate.cameraAt(S.mode === 'seq' ? S.u : S.cam, camOut);
+  if (S.ty >= 0) c.target[1] = S.ty;
+  stage.orbit({ target: c.target, radius: c.radius * S.dr, azimuth: c.azimuth + S.daz, elevation: c.elevation + S.del, fov: c.fov });
+  stage.render();
+}
+let last = 0;
+function loop(now = performance.now()) {
+  if (!playing) return;
+  const dt = last ? Math.min(0.05, (now - last) / 1000) : 0; last = now;
+  S.u = Math.min(1, S.u + dt / S.dur); if (S.t >= 0) S.t += dt;
+  frame(); syncUI();
+  if (S.u >= 1) { playing = false; syncUI(); writeHash(); return; }
+  requestAnimationFrame(loop);
+}
+addEventListener('resize', () => { resize(); frame(); });
+addEventListener('hashchange', () => { Object.assign(S, DEF); parseInto(location.hash.slice(1)); syncUI(); frame(); });
+resize(); syncUI(); frame();
+
+// ---- automation hook (puppeteer / video QA) ----
+window.GATE = {
+  S, gate, device, stage,
+  set(o) { Object.assign(S, DEF, o); resize(); frame(); return true; },
+  render() { frame(); return true; },
+  shot() { return canvas.toDataURL('image/png'); },
+  hash() { const gl = stage.renderer.getContext(); const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); let x = 2166136261; for (let i = 0; i < px.length; i++) { x ^= px[i]; x = Math.imul(x, 16777619); } return (x >>> 0).toString(16); },
+  project(name) { const v = gate.anchor(name); return v ? v.project(camera) : null; },
+  ready: true,
+};
+</script>
+</body>
+</html>

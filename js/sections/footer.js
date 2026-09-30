@@ -62,6 +62,21 @@ export default {
 
     root.querySelector('.ft-top-btn').addEventListener('click', () => ctx.scrollTo('#hero'));
 
+    // Integration QA (page-level; placed here because the footer module initialises last): when content changes
+    // the document height after boot — a <details> data table opened (console 能量输出表, clinical 数据表), a late
+    // layout switch — ScrollTrigger's cached start/end positions below it go stale: pins (protocol) start in the
+    // wrong place and [data-reveal] blocks stay invisible until far past their trigger. Re-measure once it settles.
+    const ST = ctx.ScrollTrigger, mainEl = document.querySelector('main');
+    if (ST && mainEl && 'ResizeObserver' in window) {
+      const docH = () => document.documentElement.scrollHeight;
+      let lastH = docH(), tid = 0;
+      ST.addEventListener('refresh', () => { lastH = docH(); });
+      new ResizeObserver(() => {
+        clearTimeout(tid);
+        tid = setTimeout(() => { if (Math.abs(docH() - lastH) > 2) ST.refresh(); }, 300);
+      }).observe(mainEl);
+    }
+
     // wordmark: letters rise in; a soft light follows the pointer
     const markEl = root.querySelector('.ft-mark');
     if (!reduced) {

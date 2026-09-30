@@ -1,7 +1,24 @@
 // #safety — 多重安全设计
-// Interactive concentric "shield": 7 documented protection layers (operator → skin), each explorable,
-// with fault-scenario injection (wave stops at the layer that intercepts), then contraindications & side effects.
+// 3D shield (YM3D createShieldRings3D): 7 documented protection layers (operator → skin) as nested glowing rings
+// around the skin core. Scroll explodes the gyroscope into a stacked tower (one labelled plate per layer);
+// selecting a layer lights its ring; fault-scenario injection sends a wave inward that stops (red, shaking)
+// at the intercepting layer. Then contraindications & side effects.
 // Facts: IFU p.4–5, 7, 10–12, 14–20, 24–25 (printed pages).
+import * as THREE from 'three';
+import * as S3 from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createShieldRings3D, projectAnchor } from '../ym3d/dataviz.mjs';
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built well before they enter the viewport, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
 
 // src: IFU p.24–25 故障代码表「故障解除措施」列
 const FIX = {
@@ -90,8 +107,185 @@ const SIDE = [ // IFU p.4–5, condensed wording
   ['单纯疱疹', '罕见；既往感染过单纯疱疹病毒的区域可能发作'],
 ];
 
-const C = 320, BAND = 26, CORE = 62;
-const R = LAYERS.map((_, k) => 286 - k * 33);
+/* ---------- 3D geometry of the shield (createShieldRings3D defaults) ----------
+   layer k (0 = outermost, operator) ↔ ring i = 6 − k (0 = innermost). Radii / stack heights mirror the factory
+   defaults (r0 0.42, dr 0.185, gap 0.34) so the wave and the DOM labels line up with the rings. */
+const NL = 7, R0 = 0.42, DR = 0.185, GAP = 0.34, CORE_R = 0.2, SKIN_Y = (NL - 1) / 2 * GAP + 0.2;
+const ringR = (k) => R0 + (NL - 1 - k) * DR;
+const ringY = (k) => (k - (NL - 1) / 2) * GAP; // tower height of layer k (outer at the bottom, skin on top)
+/** wave position u: −1 outside · k = layer k · 7 = skin core → radius (nested) / height (tower) */
+function waveR(u) {
+  if (u <= 0) return ringR(0) - u * 0.3;
+  if (u >= NL) return CORE_R;
+  const k = Math.floor(u), f = u - k;
+  return S3.lerp(ringR(k), k + 1 >= NL ? CORE_R + 0.04 : ringR(k + 1), f);
+}
+function waveY(u) {
+  if (u <= 0) return ringY(0) + u * 0.34;
+  if (u >= NL) return SKIN_Y;
+  const k = Math.floor(u), f = u - k;
+  return S3.lerp(ringY(k), k + 1 >= NL ? SKIN_Y : ringY(k + 1), f);
+}
+const CORE_COL = { idle: 0x6d5aa6, cool: 0x7fd4ff, heat: 0xf0603f, fault: 0xff4d64, done: 0x43e6a8 };
+const CORE_I = { idle: 0.25, cool: 1.15, heat: 1.35, fault: 1.0, done: 0.8 };
+
+const VS = 'varying vec3 vN; varying vec3 vV; varying vec3 vP; void main(){ vP = position; vec4 mv = modelViewMatrix*vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }';
+const addMat = (uniforms, fs, extra = {}) => new THREE.ShaderMaterial({ uniforms, vertexShader: VS, fragmentShader: fs, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, ...extra });
+/** additive fresnel shell */
+const fresnelMat = (color) => addMat({ uCol: { value: new THREE.Color(color) }, uO: { value: 0 }, uP: { value: 2.4 } },
+  'uniform vec3 uCol; uniform float uO; uniform float uP; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), uP); gl_FragColor = vec4(uCol * (f * 1.25 + 0.05) * uO, 1.0); }');
+/** flat glowing band around radius 1 (scale the mesh to the wanted radius) */
+const bandMat = (color, w = 0.035) => addMat({ uCol: { value: new THREE.Color(color) }, uO: { value: 0 }, uW: { value: w } },
+  'uniform vec3 uCol; uniform float uO; uniform float uW; varying vec3 vP; void main(){ float d = length(vP.xy) - 1.0; float a = exp(-pow(d / uW, 2.0)) + exp(-pow(d / (uW * 4.0), 2.0)) * 0.3; gl_FragColor = vec4(uCol * a * uO, 1.0); }');
+/** soft disc (skin surface plate on top of the tower) */
+const discMat = (color) => addMat({ uCol: { value: new THREE.Color(color) }, uO: { value: 0 } },
+  'uniform vec3 uCol; uniform float uO; varying vec3 vP; void main(){ float r = length(vP.xy); float a = 0.28 * smoothstep(1.0, 0.2, r) + exp(-pow((r - 0.96) / 0.05, 2.0)) * 0.9; gl_FragColor = vec4(uCol * a * uO, 1.0); }');
+
+/* host.mjs workaround (library bug, reported): after mount3D disposes a view it calls forceContextLoss() on its canvas and
+   later rebuilds on the SAME canvas, whose context stays lost → createStage throws → permanent fallback. This stageLib
+   wrapper renders into a fresh canvas underneath the (now blank, still event-receiving) original one when that happens. */
+function freshCanvasStages(stageLib) {
+  let live = null;
+  return {
+    ...stageLib,
+    createStage(THREE_, canvas, opts) {
+      let c = canvas;
+      if (canvas.dataset.ymLost) {
+        c = document.createElement('canvas'); c.className = canvas.className; c.style.cssText = canvas.style.cssText; c.setAttribute('aria-hidden', 'true');
+        canvas.style.opacity = '0'; canvas.parentNode.insertBefore(c, canvas);
+        if (live && live !== canvas) live.remove();
+      }
+      live = c;
+      return stageLib.createStage(THREE_, c, opts);
+    },
+  };
+}
+
+function buildShield3D(container, V, { reduced, onLabels }) {
+  let W = 2, H = 2;
+  return mount3D(container, {
+    THREE, stageLib: precompileLib(freshCanvasStages(S3)), dpr: 1.5, draggable: true,
+    stageOpts: { fov: 30, background: 0x09090f, exposure: 1.05, envViolet: 0.55 },
+    fallback: (el) => el.classList.add('is-fallback'),
+    build(stage) {
+      stage.lights.key.intensity = 1.6; stage.lights.rim.intensity = 2.2;
+      const shield = createShieldRings3D(THREE, {});
+      const root = new THREE.Group(); root.add(shield.object3d); stage.scene.add(root);
+      const rings = shield.object3d.children.filter((o) => o.isGroup); // ring groups, index = ring i (0 = innermost)
+      const fx = new THREE.Group(); stage.scene.add(fx);
+      // selected-layer and fault overlays (thin torus + flat glow band, transform copied from the ring group)
+      const torusGeo = new THREE.TorusGeometry(1, 0.012, 10, 220), bandGeo = new THREE.RingGeometry(0.82, 1.18, 200, 1);
+      const mkOverlay = (color, tubeK) => {
+        const g = new THREE.Group(); g.matrixAutoUpdate = false;
+        const tm = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+        const torus = new THREE.Mesh(torusGeo, tm); torus.userData.tubeK = tubeK; g.add(torus);
+        const bm = bandMat(color, 0.03); const band = new THREE.Mesh(bandGeo, bm); band.renderOrder = 6; g.add(band);
+        fx.add(g); return { g, torus, tm, bm };
+      };
+      const selO = mkOverlay(0xd9fff0, 1), faultO = mkOverlay(0xff4d64, 1.8);
+      // wave: fresnel shell (nested) + flat climbing band (tower)
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 40), fresnelMat(0x43e6a8)); shell.renderOrder = 7; fx.add(shell);
+      const climb = new THREE.Mesh(bandGeo, bandMat(0x43e6a8, 0.03)); climb.rotation.x = -Math.PI / 2; climb.renderOrder = 7; fx.add(climb);
+      // skin core glow (nested) + skin plate (tower)
+      const coreShell = new THREE.Mesh(new THREE.SphereGeometry(CORE_R * 1.12, 48, 32), fresnelMat(CORE_COL.idle)); coreShell.material.uniforms.uP.value = 1.6; fx.add(coreShell);
+      const glowTex = S3.glowTexture(THREE);
+      // studio backdrop: soft violet / mint bloom behind the shield (opaque canvas → additive glows stay clean)
+      const back = new THREE.Group(); stage.scene.add(back);
+      [[0x8a5cf0, 7.5, 0.34], [0x43e6a8, 3.6, 0.16]].forEach(([c, sc, o]) => {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: c, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, toneMapped: false }));
+        sp.scale.setScalar(sc); sp.renderOrder = -10; back.add(sp);
+      });
+      const coreGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: CORE_COL.idle, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      fx.add(coreGlow);
+      const skin = new THREE.Mesh(new THREE.CircleGeometry(1, 96), discMat(CORE_COL.idle)); skin.rotation.x = -Math.PI / 2; skin.scale.setScalar(0.34); skin.position.y = SKIN_Y; fx.add(skin);
+      const skinRing = new THREE.Mesh(torusGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      skinRing.rotation.x = -Math.PI / 2; skinRing.scale.set(0.34, 0.34, 0.5); skinRing.position.y = SKIN_Y; fx.add(skinRing);
+      return { cv: stage.renderer.domElement, shield, root, rings, fx, back, selO, faultO, shell, climb, coreShell, coreGlow, skin, skinRing, glowTex, geos: [torusGeo, bandGeo], levels: new Array(NL).fill(0), col: new THREE.Color(), colT: new THREE.Color(CORE_COL.idle), coreI: CORE_I.idle, lastW: 0, lastH: 0, pa: {} };
+    },
+    frame(s, stage, t, dt, api) {
+      const size = stage.renderer.getSize(new THREE.Vector2()); W = size.x; H = size.y;
+      const resized = W !== s.lastW || H !== s.lastH; s.lastW = W; s.lastH = H;
+      if (reduced && !V.needs && !resized) return;
+      V.needs = false;
+      const now = performance.now() / 1000, tt = reduced ? 1.4 : t;
+      const k1 = reduced ? 1 : 1 - Math.exp(-dt * 5);
+      V.ex += (V.exT - V.ex) * k1; if (Math.abs(V.exT - V.ex) < 1e-4) V.ex = V.exT;
+      const ex = V.ex, exE = S3.ease.inOut(ex), intro = V.intro;
+      // per-layer light levels
+      for (let k = 0; k < NL; k++) {
+        let lv = 0.4;
+        if (V.passT[k] >= 0) lv = 0.66 + 0.34 * Math.exp(-(now - V.passT[k]) * 2.4);
+        if (V.faultK != null && k > V.faultK) lv = 0.03;
+        if (k === V.faultK) lv = 0.08;
+        if (k === V.sel && k !== V.faultK) lv = Math.min(1, lv + 0.4);
+        s.levels[NL - 1 - k] = lv * (0.25 + 0.75 * intro);
+      }
+      s.shield.update({ t: tt, explode: ex, levels: s.levels });
+      // fault ring shake (position is re-set by update() every frame, so the offset never accumulates)
+      const fk = V.faultK;
+      if (fk != null && !reduced) {
+        const a = 0.045 * Math.exp(-(now - V.faultT) * 3.2);
+        const g = s.rings[NL - 1 - fk]; g.position.x += a * Math.sin(now * 57); g.position.z += a * 0.6 * Math.cos(now * 43);
+      }
+      s.root.scale.setScalar(0.88 + 0.12 * intro); s.root.rotation.y = (1 - intro) * -0.9;
+      s.root.updateMatrixWorld(true);
+      // overlays
+      const place = (o, k, on, pulse) => {
+        o.g.visible = on > 0.002;
+        if (!o.g.visible) return;
+        o.g.matrix.copy(s.rings[NL - 1 - k].matrixWorld); const R = ringR(k);
+        o.torus.scale.set(R, R, o.torus.userData.tubeK); o.tm.opacity = on * pulse;
+        o.g.children[1].scale.setScalar(R); o.bm.uniforms.uO.value = on * pulse * 0.9;
+      };
+      V.selOn += ((V.sel != null && V.sel !== fk ? 1 : 0) - V.selOn) * k1;
+      V.faultOn += ((fk != null ? 1 : 0) - V.faultOn) * k1;
+      if (V.sel != null) place(s.selO, V.sel, V.selOn * intro, 0.55 + 0.25 * Math.sin(tt * 3.2));
+      else s.selO.g.visible = false;
+      if (fk != null) place(s.faultO, fk, V.faultOn, 0.85 + 0.15 * Math.sin(tt * 9));
+      else s.faultO.g.visible = false;
+      // wave
+      const wo = V.waveO, R = waveR(V.u);
+      s.shell.visible = wo * (1 - exE) > 0.002; s.shell.scale.setScalar(R); s.shell.material.uniforms.uO.value = wo * (1 - exE) * 0.8;
+      s.climb.visible = wo * exE > 0.002; s.climb.scale.setScalar(R); s.climb.position.y = waveY(V.u) * exE; s.climb.material.uniforms.uO.value = wo * exE * 1.4;
+      // skin core / plate
+      s.colT.setHex(CORE_COL[V.core] || CORE_COL.idle); s.col.lerp(s.colT, k1 * 1.4 > 1 ? 1 : k1 * 1.4);
+      s.coreI += ((CORE_I[V.core] ?? 0.3) - s.coreI) * k1;
+      const cs = Math.max(0, 1 - exE);
+      s.coreShell.visible = s.coreGlow.visible = cs > 0.01;
+      s.coreShell.scale.setScalar(cs); s.coreShell.material.uniforms.uCol.value.copy(s.col); s.coreShell.material.uniforms.uO.value = s.coreI * intro;
+      s.coreGlow.scale.setScalar(1.25 * cs * (0.8 + 0.25 * s.coreI)); s.coreGlow.material.color.copy(s.col); s.coreGlow.material.opacity = Math.min(1, 0.55 * s.coreI) * intro;
+      s.skin.visible = s.skinRing.visible = exE > 0.01;
+      s.skin.material.uniforms.uCol.value.copy(s.col); s.skin.material.uniforms.uO.value = exE * (0.45 + 0.6 * s.coreI);
+      s.skinRing.material.color.copy(s.col); s.skinRing.material.opacity = exE * 0.9;
+      // camera: nested gyroscope → tower (higher, looking down on the plates); tower shifted left so labels fit on the right
+      const aspect = W / Math.max(1, H), halfV = Math.tan((30 * Math.PI) / 360), fitH = Math.min(halfV, halfV * aspect);
+      const objR = S3.lerp(1.72, 1.62, exE), labelRoom = S3.lerp(0.0, aspect < 0.9 ? 0.55 : 0.75, exE);
+      const radius = (objR + labelRoom * 0.55) / fitH * S3.lerp(1.2, 1.08, exE);
+      const az = S3.lerp(0.32, 0.5, exE) + api.drag.azimuth, el = S3.clamp(S3.lerp(0.26, 0.5, exE) + api.drag.elevation, -0.5, 1.2);
+      const rx = Math.cos(az), rz = -Math.sin(az); // camera right vector
+      const tx = labelRoom * rx * 0.62, tz = labelRoom * rz * 0.62, ty = S3.lerp(0, 0.18, exE);
+      const px = (api.pointer.inside ? api.pointer.x : 0) * 0.06, py = (api.pointer.inside ? api.pointer.y : 0) * 0.04;
+      stage.orbit({ target: [tx, ty, tz], radius, azimuth: az + px, elevation: el + py });
+      stage.render();
+      // DOM labels
+      const cam = stage.camera, pa = s.pa;
+      for (let k = 0; k < NL; k++) { const p = projectAnchor(THREE, s.shield.anchors['ring' + (NL - 1 - k)], cam, W, H, pa['r' + k] || (pa['r' + k] = {})); p.k = k; }
+      projectAnchor(THREE, s.shield.anchors.core, cam, W, H, pa.core || (pa.core = {}));
+      pa.W = W; onLabels(pa, ex);
+    },
+    dispose(s) { s.cv.dataset.ymLost = '1'; s.shield.dispose(); s.back.traverse((o) => { if (o.material) o.material.dispose(); }); s.fx.traverse((o) => { if (o.material) o.material.dispose(); }); s.shell.geometry.dispose(); s.coreShell.geometry.dispose(); s.skin.geometry.dispose(); s.geos.forEach((g) => g.dispose()); s.glowTex.dispose(); },
+  });
+}
+
+/** scroll progress read straight from the element's rect (robust to layout shifts above that leave cached
+    ScrollTrigger positions stale); rAF-throttled, only while the element is near the viewport. */
+function scrollTrack(el, calc, fn) {
+  let raf = 0, near = false;
+  const tick = () => { raf = 0; const r = el.getBoundingClientRect(); fn(Math.min(1, Math.max(0, calc(r, window.innerHeight)))); };
+  const req = () => { if (near && !raf) raf = requestAnimationFrame(tick); };
+  new IntersectionObserver(([e]) => { near = e.isIntersecting; tick(); }, { rootMargin: '80% 0px' }).observe(el);
+  window.addEventListener('scroll', req, { passive: true }); window.addEventListener('resize', req);
+}
 
 export default {
   id: 'safety',
@@ -101,46 +295,20 @@ export default {
     const faultText = Object.fromEntries(D.faults.map((f) => [f.code, f.text.split(' · ')[0]]));
     const num = (k) => String(k + 1).padStart(2, '0');
 
-    /* ---------- shield svg ---------- */
-    const rings = LAYERS.map((L, k) => {
-      const r = R[k];
-      return `
-      <g class="sf-ring" data-k="${k}" style="--d:${(k % 2 ? -1 : 1) * (70 + k * 14)}s">
-        <path id="sf-arc-${k}" d="M ${C - r} ${C} A ${r} ${r} 0 0 1 ${C + r} ${C}" fill="none" stroke="none"/>
-        <circle class="sf-ring__band" cx="${C}" cy="${C}" r="${r}" stroke-width="${BAND}"/>
-        <circle class="sf-ring__tick" cx="${C}" cy="${C}" r="${r + BAND / 2 - 3.5}" stroke-width="5" stroke-dasharray="1 ${(k % 2 ? 7 : 5)}"/>
-        <circle class="sf-ring__edge" cx="${C}" cy="${C}" r="${r + BAND / 2}"/>
-        <text class="sf-ring__lab" dy="0.35em"><textPath href="#sf-arc-${k}" startOffset="50%" text-anchor="middle"><tspan class="sf-ring__no">${num(k)}</tspan><tspan class="sf-ring__nm"> · ${L.short}</tspan></textPath></text>
-        <circle class="sf-ring__hit" cx="${C}" cy="${C}" r="${r}" stroke-width="${BAND + 6}"><title>${num(k)} ${L.name}</title></circle>
-      </g>`;
-    }).join('');
-
+    /* ---------- 3D shield stage (DOM part: labels + fallback rings) ---------- */
     const shield = `
-      <svg class="sf-svg" viewBox="0 0 640 640" role="group" aria-label="七层安全设计示意图">
-        <defs>
-          <linearGradient id="sfGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#43e6a8"/><stop offset=".55" stop-color="#2bae7e"/><stop offset="1" stop-color="#8a5cf0"/>
-          </linearGradient>
-          <radialGradient id="sfCool"><stop offset="0" stop-color="#dff5ff"/><stop offset=".45" stop-color="#7fd4ff"/><stop offset="1" stop-color="#1c3f6e"/></radialGradient>
-          <radialGradient id="sfHeat"><stop offset="0" stop-color="#fff4d6"/><stop offset=".35" stop-color="#ffc45e"/><stop offset=".7" stop-color="#f0603f"/><stop offset="1" stop-color="#6a2a8c"/></radialGradient>
-          <radialGradient id="sfIdle"><stop offset="0" stop-color="#2a2240"/><stop offset="1" stop-color="#0d0d16"/></radialGradient>
-          <radialGradient id="sfFault"><stop offset="0" stop-color="#4a1420"/><stop offset="1" stop-color="#140910"/></radialGradient>
-          <filter id="sfBlur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6"/></filter>
-        </defs>
-        <circle class="sf-halo" cx="${C}" cy="${C}" r="306"/>
-        ${rings}
-        <circle class="sf-wave sf-wave--glow" cx="${C}" cy="${C}" r="300" filter="url(#sfBlur)"/>
-        <circle class="sf-wave" cx="${C}" cy="${C}" r="300"/>
-        <g class="sf-core">
-          <circle class="sf-core__c is-on" data-st="idle" cx="${C}" cy="${C}" r="${CORE}" fill="url(#sfIdle)"/>
-          <circle class="sf-core__c" data-st="cool" cx="${C}" cy="${C}" r="${CORE}" fill="url(#sfCool)"/>
-          <circle class="sf-core__c" data-st="heat" cx="${C}" cy="${C}" r="${CORE}" fill="url(#sfHeat)"/>
-          <circle class="sf-core__c" data-st="fault" cx="${C}" cy="${C}" r="${CORE}" fill="url(#sfFault)"/>
-          <circle class="sf-core__ring" cx="${C}" cy="${C}" r="${CORE}"/>
-          <text class="sf-core__t1" x="${C}" y="${C - 4}" text-anchor="middle">皮肤表面</text>
-          <text class="sf-core__t2" x="${C}" y="${C + 16}" text-anchor="middle">SKIN</text>
-        </g>
-      </svg>`;
+      <div class="sf-stage" role="group" aria-label="七层安全设计三维示意：由外到内为操作者到皮肤表面">
+        <div class="sf-fb" aria-hidden="true">${LAYERS.map((_, k) => `<i style="--k:${k}"></i>`).join('')}</div>
+        <div class="sf-labs">
+          ${LAYERS.map((L, k) => `<button type="button" class="sf-lab" data-k="${k}" tabindex="-1" aria-label="${num(k)} ${L.name}"><span class="sf-lab__in"><b class="mono">${num(k)}</b>${L.short}<em class="sf-lab__f mono"></em></span></button>`).join('')}
+          <div class="sf-corelab" aria-live="polite"><b class="sf-core__t1">皮肤表面</b><span class="sf-core__t2 mono">SKIN</span></div>
+        </div>
+        <span class="sf-tag mono">原理示意 · SIMULATION</span>
+        <div class="seg sf-view" role="group" aria-label="视图">
+          <button type="button" data-ex="0" aria-pressed="true">嵌套</button><button type="button" data-ex="1" aria-pressed="false">分层展开</button>
+        </div>
+        <span class="sf-drag micro" aria-hidden="true">拖动旋转</span>
+      </div>`;
 
     /* ---------- per-layer mini widgets ---------- */
     const minis = {
@@ -260,7 +428,7 @@ export default {
       <header class="sec-head">
         <span class="eyebrow">12 · SAFETY BY DESIGN</span>
         <h2 class="h1">多重<span class="grad-text">安全设计</span></h2>
-        <p class="lead">从操作者资质到皮肤表面，说明书记载的防护措施按层级排列为七个环。点击任一环查看细节；选择故障情景，观察系统在哪一层拦截。</p>
+        <p class="lead">从操作者资质到皮肤表面，说明书记载的防护措施按层级排列为七个环。向下滚动，七环逐层展开；点击任一环查看细节；选择故障情景，观察系统在哪一层拦截。</p>
       </header>
 
       <div class="sf-main">
@@ -322,16 +490,77 @@ export default {
       </div>
     </div>`;
 
+
+    /* ---------- 3D view state (logical; survives WebGL context dispose / rebuild) ---------- */
+    const V = {
+      sel: 0, ex: 0, exT: 0, intro: reduced ? 1 : 0, u: -1, waveO: 0, passT: new Array(NL).fill(-1),
+      faultK: null, faultT: 0, core: 'idle', selOn: 0, faultOn: 0, needs: true,
+    };
+    const stageEl = root.querySelector('.sf-stage');
+    const labEls = [...root.querySelectorAll('.sf-lab')];
+    const labF = labEls.map((b) => b.querySelector('.sf-lab__f'));
+    const coreLab = root.querySelector('.sf-corelab');
+    const t1 = root.querySelector('.sf-core__t1');
+    const t2 = root.querySelector('.sf-core__t2');
+    const viewBtns = [...root.querySelectorAll('.sf-view button')];
+    let labMode = '';
+    const labFlip = [], labCrowd = [], placed = [];
+    function onLabels(pa, ex) {
+      const tower = ex > 0.82;
+      const mode = `${tower}|${V.sel}|${V.faultK}`;
+      if (mode !== labMode) {
+        labMode = mode;
+        labEls.forEach((b, k) => {
+          const on = tower || k === V.sel || k === V.faultK;
+          b.classList.toggle('is-on', on); b.classList.toggle('is-sel', k === V.sel); b.classList.toggle('is-fault', k === V.faultK);
+          b.tabIndex = -1;
+        });
+        stageEl.classList.toggle('is-tower', tower);
+        viewBtns.forEach((b) => b.setAttribute('aria-pressed', String((+b.dataset.ex === 1) === (V.exT > 0.5))));
+      }
+      for (let k = 0; k < NL; k++) {
+        const p = pa['r' + k], flip = p.x > pa.W - 150;
+        if (flip !== labFlip[k]) { labFlip[k] = flip; labEls[k].classList.toggle('is-flip', flip); }
+        labEls[k].style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0)`;
+      }
+      // integration QA: orbiting the tower to a steep angle made the plate anchors converge and the labels piled up on
+      // each other — hide any label that would overlap one already placed (the selected / fault layer is placed first)
+      let np = 0;
+      const pri = Number.isInteger(V.faultK) ? V.faultK : Number.isInteger(V.sel) ? V.sel : 0;
+      for (let i = 0; i < NL; i++) {
+        const k = i === 0 ? pri : i <= pri ? i - 1 : i;
+        const p = pa['r' + k], x0 = labFlip[k] ? p.x - 134 : p.x + 14, x1 = x0 + 120; // pill ≈ 120 × 26 px beside the dot
+        const c = pa.core; // core status pill (tower): centred above its anchor, ≈ 100 × 40 px
+        let crowd = tower && x1 > c.x - 50 && x0 < c.x + 50 && p.y + 13 > c.y - 48 && p.y - 13 < c.y - 6;
+        if (tower && !crowd) for (let j = 0; j < np; j++) { const q = placed[j]; if (Math.abs(q.y - p.y) < 27 && q.x1 > x0 && q.x0 < x1) { crowd = true; break; } }
+        if (!crowd) { const q = placed[np] || (placed[np] = {}); q.y = p.y; q.x0 = x0; q.x1 = x1; np++; }
+        if (crowd !== labCrowd[k]) { labCrowd[k] = crowd; labEls[k].classList.toggle('is-crowd', crowd); }
+      }
+      const c = pa.core;
+      coreLab.style.transform = `translate3d(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px, 0)`;
+      coreLab.classList.toggle('is-tower', tower);
+    }
+    const m3 = buildShield3D(stageEl, V, { reduced, onLabels });
+    const redraw = () => { V.needs = true; m3.invalidate(); };
+
+    /* scroll: nested gyroscope → stacked tower (manual toggle overrides until the section leaves the viewport) */
+    let manual = false;
+    const mainEl = root.querySelector('.sf-main');
+    const desk = () => window.innerWidth > 1000;
+    if (!reduced) {
+      scrollTrack(mainEl, (r, vh) => (desk() ? (0.22 * vh - r.top) / Math.max(1, r.height - 0.7 * vh) : (0.75 * vh - r.top) / (0.43 * vh)),
+        (p) => { if (!manual && Math.abs(S3.smooth(p) - V.exT) > 1e-4) { V.exT = S3.smooth(p); redraw(); } });
+    }
+    new IntersectionObserver(([e]) => { if (!e.isIntersecting) manual = false; }).observe(mainEl);
+    viewBtns.forEach((b) => b.addEventListener('click', () => { manual = true; V.exT = +b.dataset.ex; labMode = ''; redraw(); }));
+
     /* ---------- selection ---------- */
-    const svgEl = root.querySelector('.sf-svg');
-    const ringEls = [...root.querySelectorAll('.sf-ring')];
     const tabs = [...root.querySelectorAll('.sf-tab')];
     const panelEls = [...root.querySelectorAll('.sf-panel')];
     let sel = 0, refreshId = 0, faultK = null;
     function select(k, focus = false) {
       if (faultK != null && faultK !== k) { resetSim(); status.textContent = IDLE_MSG; }
-      sel = k;
-      ringEls.forEach((g, i) => g.classList.toggle('is-sel', i === k));
+      sel = k; V.sel = k; labMode = ''; redraw();
       tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === k)); t.tabIndex = i === k ? 0 : -1; });
       panelEls.forEach((p, i) => { p.hidden = i !== k; });
       if (focus) tabs[k].focus();
@@ -343,68 +572,51 @@ export default {
       const m = { ArrowDown: sel + 1, ArrowRight: sel + 1, ArrowUp: sel - 1, ArrowLeft: sel - 1, Home: 0, End: LAYERS.length - 1 };
       if (e.key in m) { e.preventDefault(); select((m[e.key] + LAYERS.length) % LAYERS.length, true); }
     });
-    ringEls.forEach((g) => {
-      const hit = g.querySelector('.sf-ring__hit');
-      hit.addEventListener('click', () => select(+g.dataset.k));
-      hit.addEventListener('pointerenter', () => g.classList.add('is-hover'));
-      hit.addEventListener('pointerleave', () => g.classList.remove('is-hover'));
-    });
+    labEls.forEach((b) => b.addEventListener('click', () => select(+b.dataset.k)));
     tabs.forEach((t) => {
-      t.addEventListener('pointerenter', () => ringEls[+t.dataset.k].classList.add('is-hover'));
-      t.addEventListener('pointerleave', () => ringEls[+t.dataset.k].classList.remove('is-hover'));
+      t.addEventListener('pointerenter', () => labEls[+t.dataset.k].classList.add('is-hover'));
+      t.addEventListener('pointerleave', () => labEls[+t.dataset.k].classList.remove('is-hover'));
     });
-    select(0);
 
-    // pause decorative ring rotation off-screen
-    lib.whenVisible(svgEl, () => svgEl.classList.add('is-live'), () => svgEl.classList.remove('is-live'));
     lib.whenVisible(root, () => root.classList.add('is-live'), () => root.classList.remove('is-live'));
 
     /* ---------- pulse / fault simulation ---------- */
     const IDLE_MSG = '7 层防护 · 选择右侧故障情景可观察拦截位置';
-    const waves = [...root.querySelectorAll('.sf-wave')];
-    const coreCs = [...root.querySelectorAll('.sf-core__c')];
-    const t1 = root.querySelector('.sf-core__t1');
-    const t2 = root.querySelector('.sf-core__t2');
     const status = root.querySelector('.sf-status');
     const loopEl = root.querySelector('.sf-loop');
     let tl = null;
-    const setCore = (st, a, b) => {
-      coreCs.forEach((c) => c.classList.toggle('is-on', c.dataset.st === (st === 'done' ? 'idle' : st)));
-      svgEl.dataset.core = st; t1.textContent = a; t2.textContent = b;
-    };
+    const setCore = (st, a, b) => { V.core = st === 'done' ? 'done' : st; coreLab.dataset.st = st; t1.textContent = a; t2.textContent = b; redraw(); };
     const resetSim = () => {
-      tl?.kill(); faultK = null;
-      ringEls.forEach((g) => g.classList.remove('is-pass', 'is-fault'));
+      tl?.kill(); faultK = null; V.faultK = null; V.passT.fill(-1); V.waveO = 0; V.u = -1;
+      labF.forEach((f) => { f.textContent = ''; });
       loopEl?.classList.remove('is-break');
-      waves.forEach((w) => { w.setAttribute('r', 300); w.style.opacity = 0; });
-      setCore('idle', '皮肤表面', 'SKIN');
+      setCore('idle', '皮肤表面', 'SKIN'); labMode = '';
     };
     function run(stopK = null, info = null) {
       resetSim(); faultK = stopK;
-      const target = stopK == null ? CORE : R[stopK] + BAND / 2 + 2;
+      const target = stopK == null ? NL : stopK;
       if (stopK != null && LAYERS[stopK].id === 'circuit' && info?.code === 'E403') loopEl?.classList.add('is-break');
-      const passTo = (r) => ringEls.forEach((g, k) => { if (r <= R[k] && k !== stopK) g.classList.add('is-pass'); });
+      const passTo = (u) => { const now = performance.now() / 1000; for (let k = 0; k < Math.min(target, NL); k++) if (u >= k && V.passT[k] < 0) V.passT[k] = now; };
       const endState = () => {
         if (stopK == null) {
           setCore('done', '脉冲完成', 'COMPLETE');
           status.innerHTML = '<b>7 / 7</b> 层条件满足 → 治疗前冷却 → 射频传送 → 治疗后冷却';
         } else {
-          ringEls[stopK].classList.add('is-fault');
+          V.faultK = stopK; V.faultT = performance.now() / 1000; labMode = '';
+          labF[stopK].textContent = info.code || 'SIM';
           setCore('fault', info.code || info.title, '射频停止');
           status.innerHTML = `<b class="sf-alert">第 ${num(stopK)} 层拦截</b> · ${info.code ? `${info.code} ${faultText[info.code]}` : info.text}${info.code ? ` · 解除措施：${FIX[info.code]}` : ''}`;
         }
+        redraw();
       };
-      if (reduced) { passTo(target); endState(); if (stopK == null) setCore('done', '脉冲完成', 'COMPLETE'); return; }
-      const w = { r: 300 };
-      status.textContent = stopK == null ? '逐层检查中…' : '逐层检查中…';
+      if (reduced) { passTo(target); endState(); return; }
+      const w = { u: -1 };
+      status.textContent = '逐层检查中…';
       tl = gsap.timeline();
-      tl.to(waves, { opacity: 1, duration: 0.2 })
-        .to(w, {
-          r: target, duration: 0.5 + ((300 - target) / 240) * 1.3, ease: 'power1.in',
-          onUpdate: () => { waves.forEach((x) => x.setAttribute('r', w.r)); passTo(w.r); },
-        });
+      tl.to(V, { waveO: 1, duration: 0.25 })
+        .to(w, { u: target, duration: 0.55 + target * 0.24, ease: 'power1.in', onUpdate: () => { V.u = w.u; passTo(w.u); } }, 0);
       if (stopK == null) {
-        tl.to(waves, { opacity: 0, duration: 0.25 })
+        tl.to(V, { waveO: 0, duration: 0.3 })
           .add(() => { setCore('cool', '治疗前冷却', 'PRE-COOL'); status.textContent = '7 / 7 层通过 · 治疗前冷却'; })
           .to({}, { duration: 0.8 })
           .add(() => { setCore('heat', '射频传送', 'RF ON'); status.textContent = '射频传送'; })
@@ -413,7 +625,7 @@ export default {
           .to({}, { duration: 0.8 })
           .add(endState);
       } else {
-        tl.add(endState).to(waves, { opacity: 0, duration: 0.5, delay: 0.15 });
+        tl.add(endState).to(V, { waveO: 0, duration: 0.5, delay: 0.1 });
       }
     }
     root.querySelector('.sf-run').addEventListener('click', () => run());
@@ -422,7 +634,7 @@ export default {
       const k = +b.closest('.sf-panel').dataset.k;
       if (b.dataset.code) run(k, { code: b.dataset.code });
       else { const s = LAYERS[k].scen.find((x) => x.id === b.dataset.scen); run(k, s); }
-      const sh = root.querySelector('.sf-svg'), r = sh.getBoundingClientRect();
+      const r = stageEl.getBoundingClientRect();
       const vh = window.innerHeight, fits = r.height < vh - 90;
       if (r.top < 70 || (fits && r.bottom > vh - 10) || r.top > vh * 0.45) {
         const y = Math.round(window.scrollY + r.top - Math.max(76, (vh - r.height) / 2));
@@ -430,11 +642,16 @@ export default {
       }
     });
     resetSim();
+    select(0);
     if (!reduced) {
-      const o = new IntersectionObserver(([en]) => { if (en.isIntersecting) { o.disconnect(); gsap.delayedCall(0.9, () => run()); } }, { threshold: 0.5 });
-      o.observe(svgEl);
-      // rings assemble from outside in
-      gsap.from(ringEls, { scale: 1.12, opacity: 0, transformOrigin: '50% 50%', duration: 1.1, ease: 'expo.out', stagger: 0.07, scrollTrigger: { trigger: svgEl, start: 'top 80%', once: true } });
+      // build-in: rings spin up and light from the outside in, then one normal pulse runs
+      const o = new IntersectionObserver(([en]) => {
+        if (!en.isIntersecting) return;
+        o.disconnect();
+        gsap.to(V, { intro: 1, duration: 1.8, ease: 'expo.out' });
+        gsap.delayedCall(1.2, () => run());
+      }, { threshold: 0.45 });
+      o.observe(stageEl);
     }
 
     /* ---------- mini: energy table ---------- */

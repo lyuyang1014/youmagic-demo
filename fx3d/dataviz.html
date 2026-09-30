@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YM3D · Data Viz Kit</title>
+<style>
+  @font-face { font-family: 'Montserrat'; src: url('../assets/fonts/Montserrat-VF.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+  :root { --ink: #07070c; --fg: #e9ebf5; --dim: #8d92ab; --mint: #43e6a8; --violet: #8a5cf0; --line: rgba(255,255,255,.09); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--ink); color: var(--fg); font-family: Montserrat, "PingFang SC", "Hiragino Sans GB", sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; touch-action: none; }
+  #stage:active { cursor: grabbing; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  .lb { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font-size: 12.5px; font-weight: 600; letter-spacing: .02em; padding: 5px 10px; border-radius: 999px;
+        background: rgba(12,12,20,.62); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: var(--fg); transition: opacity .15s; }
+  .lb::after { content: ''; position: absolute; left: 50%; bottom: -7px; width: 1px; height: 6px; background: rgba(255,255,255,.4); }
+  .lb.l { transform: translate(8px, -50%); } .lb.l::after { display: none; }
+  .lb.r { transform: translate(calc(-100% - 8px), -50%); } .lb.r::after { display: none; }
+  .lb.plain { background: none; border: 0; backdrop-filter: none; color: var(--dim); font-weight: 500; }
+  .lb b { color: var(--mint); font-weight: 700; }
+  .lb em { font-style: normal; color: #cbb8ff; }
+  #nav { position: fixed; left: 20px; top: 20px; display: flex; flex-direction: column; gap: 4px; z-index: 3; }
+  #nav h1 { margin: 0 0 10px; font-size: 13px; letter-spacing: .18em; font-weight: 700; color: var(--dim); }
+  #nav button { all: unset; cursor: pointer; font-size: 13px; padding: 7px 12px; border-radius: 8px; color: var(--dim); border: 1px solid transparent; }
+  #nav button:hover { color: var(--fg); }
+  #nav button.on { color: var(--fg); background: rgba(138,92,240,.16); border-color: rgba(138,92,240,.4); }
+  #panel { position: fixed; right: 20px; bottom: 20px; width: 300px; max-height: calc(100vh - 40px); overflow: auto; padding: 14px 16px; border-radius: 14px; z-index: 3;
+           background: rgba(14,14,22,.78); border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font-size: 12px; }
+  #panel h2 { margin: 0 0 10px; font-size: 13px; font-weight: 700; }
+  .row { display: grid; grid-template-columns: 92px 1fr 44px; align-items: center; gap: 8px; margin: 6px 0; }
+  .row label { color: var(--dim); }
+  .row output { text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--violet); }
+  select { width: 100%; background: #16161f; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 3px; font: inherit; }
+  .btns { display: flex; gap: 6px; margin-top: 10px; }
+  .btns button { flex: 1; font: inherit; font-size: 12px; padding: 6px; border-radius: 7px; border: 1px solid var(--line); background: #1a1a25; color: var(--fg); cursor: pointer; }
+  .btns button.on { border-color: var(--mint); color: var(--mint); }
+  #cap { position: fixed; left: 20px; bottom: 18px; font-size: 11px; color: var(--dim); max-width: 46vw; line-height: 1.5; z-index: 3; }
+  body.clean #nav, body.clean #panel, body.clean #cap { display: none; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="labels"></div>
+<nav id="nav"><h1>YM3D · DATAVIZ</h1></nav>
+<div id="panel"><h2 id="ptitle"></h2><div id="controls"></div>
+  <div class="btns"><button id="play">▶ 播放</button><button id="replay">↺ 重演</button><button id="reset">视角复位</button></div>
+</div>
+<div id="cap"></div>
+<script type="importmap">{"imports":{"three":"../vendor/three.module.min.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { createStage } from '../js/ym3d/stage.mjs';
+import { createEnergyMatrix3D, createPulseTrain3D, createLoadCurve3D, createDigits3D, createShieldRings3D, createLock54, createParticleNumber, createMedallions, createStudioFloor, projectAnchors, ENERGY } from '../js/ym3d/dataviz.mjs';
+
+await document.fonts.load('600 40px Montserrat'); await document.fonts.load('500 40px Montserrat'); await document.fonts.ready;
+
+const canvas = document.getElementById('stage');
+const dpr = Math.min(2, window.devicePixelRatio || 1);
+const stage = createStage(THREE, canvas, { width: innerWidth, height: innerHeight, dpr, preserveDrawingBuffer: true, exposure: 1.0 });
+const floor = createStudioFloor(THREE, { radius: 10 }); stage.scene.add(floor.object3d);
+
+const loadImg = (src) => new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+const centerImgs = await Promise.all([1, 2, 3, 4].map((i) => loadImg(`../assets/img/center-${i}.webp`)));
+const CENTERS = ['中国医学科学院整形外科医院', '南方医科大学', '成都市第二人民医院', '新疆维吾尔自治区人民医院'];
+const SAFETY7 = ['双条件触发', '接触压力感测', '中性电极回路监测', '实时阻抗监测', '功率监测', '超温报警', '制冷剂在位检测'];
+const fmt = (v, d = 1) => Number(v).toFixed(d);
+
+const ITEMS = {
+  matrix: {
+    title: '① 能量输出矩阵 · Energy Matrix 3D', floorY: -0.34,
+    cap: '数据：IFU §7.5 能量输出表 · 能量密度 = (15 + 20·档位) × 脉冲时间 ÷ 4 cm² · 105 种可输出组合，39 种锁定（上限 38.8 J/cm²）',
+    make: () => createEnergyMatrix3D(THREE, {}),
+    controls: [['reveal', 0, 1, 0.01, 1], ['hl', 0, 1, 1, 1, '高亮'], ['lv', 0.5, 8, 0.5, 6, '功率档位'], ['p', 0.7, 1.5, 0.1, 1.0, '脉冲时间'], ['pulseHighlight', 0, 1, 0.01, 0.6], ['focus', 0, 1, 0.01, 0.55], ['band', -1, 3, 1, -1, '能量带'], ['zone', 0, 1, 0.01, 1], ['values', 0, 1, 0.01, 0], ['t', 0, 20, 0.01, 0]],
+    params: (s) => ({ reveal: s.reveal, highlight: s.hl ? { lv: s.lv, p: s.p } : null, pulseHighlight: s.pulseHighlight, focus: s.band >= 0 ? Math.max(s.focus, 0.75) : s.hl ? s.focus : 0, band: s.band >= 0 ? s.band : null, zone: s.zone, values: s.values, t: s.t }),
+    labels: (s) => {
+      const d = ENERGY.density(s.lv, s.p), ok = ENERGY.isAllowed(s.lv, s.p), b = ENERGY.BANDS[ENERGY.bandIndex(d)];
+      return [
+        s.hl && ['highlight', ok ? `档位 ${fmt(s.lv)} · ${fmt(s.p)} s · <b>${fmt(d)}</b> J/cm² · ${b.label}` : `档位 ${fmt(s.lv)} · ${fmt(s.p)} s · <em>超限锁定</em>`],
+        ['zone', '推荐区 <b>中 / 较高</b>'], ['locked', '超出安全窗口 · 自动锁定'],
+      ];
+    },
+    anim: (u) => ({ reveal: Math.min(1, u / 3), t: u }),
+  },
+  pulse: {
+    title: '② 闪脉冲 · Pulse Train 3D', floorY: -0.3,
+    cap: '一个脉冲对应 0.1 秒（IFU p.9）· 脉冲时间 0.7–1.5 s = 7–15 个 100 ms 脉冲 · 前冷却 → 射频 → 后冷却（IFU §7.6）· 温度曲线为原理示意',
+    make: () => createPulseTrain3D(THREE, {}),
+    controls: [['pulses', 7, 15, 0.01, 10], ['flow', 0, 1, 0.001, 0.62], ['reveal', 0, 1, 0.01, 1], ['ribbons', 0, 1, 0.01, 1], ['t', 0, 20, 0.01, 0]],
+    params: (s) => ({ pulses: s.pulses, flow: s.flow, reveal: s.reveal, ribbons: s.ribbons, t: s.t }),
+    labels: (s) => [['rf', `<b>${Math.round(s.pulses)}</b> × 100 ms = ${fmt(Math.round(s.pulses) / 10)} s`], ['dermis', '真皮层 · 平稳升温'], ['epidermis', '表皮层 · 冷却保护']],
+    anim: (u) => ({ flow: Math.min(1, (u % 6) / 5), t: u }),
+  },
+  load: {
+    title: '③ AI 能量匹配 · Load Curve 3D', floorY: -0.3,
+    cap: '数据：IFU p.31 图12 负载特性 · 额定负载 100–250 Ω 满功率 175 W · 测量范围 75–350 Ω',
+    make: () => createLoadCurve3D(THREE, {}),
+    controls: [['reveal', 0, 1, 0.01, 1], ['ohm', 75, 350, 1, 109], ['half', 0, 1, 0.01, 1], ['band', 0, 1, 0.01, 1], ['t', 0, 20, 0.01, 0]],
+    params: (s) => ({ reveal: s.reveal, ohm: s.ohm, half: s.half, band: s.band, t: s.t }),
+    labels: (s, c) => { const w = c.powerAt(s.ohm); const lk = s.ohm >= 100 && s.ohm <= 250; return [['marker', `${Math.round(s.ohm)} Ω → <b>${Math.round(w)} W</b>${lk ? ' · 恒定' : ''}`], ['band', '额定负载 <em>100–250 Ω</em>'], ['half', '半功率 95 W']]; },
+    anim: (u) => ({ reveal: Math.min(1, u / 2.5), ohm: 212 + 125 * Math.sin(u * 0.7), t: u }),
+  },
+  digits: {
+    title: '④ 3D 数字 · Digits 3D', floorY: -0.02,
+    cap: '几何数字字形（无字体文件）· 斜面挤出 · 材质：品牌渐变金属 / 镀铬 / 金 / 玻璃 · 数值来源 data.js',
+    make: (s) => createDigits3D(THREE, { material: s.mat || 'brand', size: 1 }),
+    controls: [['text', ['1995', '212', '6.78', '175', '33.8', '900', '5+4', '100%', '-', '×']], ['rollFrom', ['', '0', '0000', '000', '0.00', '25']], ['mat', ['brand', 'chrome', 'gold', 'glass'], null, null, null, '材质'], ['reveal', 0, 1, 0.01, 1], ['roll', 0, 1, 0.01, 1], ['glint', -0.01, 1, 0.01, -0.01], ['t', 0, 20, 0.01, 0]],
+    params: (s) => ({ text: s.text, rollFrom: s.rollFrom || null, roll: s.rollFrom ? s.roll : undefined, reveal: s.reveal, glint: s.glint < 0 ? null : s.glint, t: s.t }),
+    labels: () => [],
+    anim: (u) => ({ reveal: Math.min(1, u / 1.6), roll: Math.min(1, u / 2.4), glint: (u * 0.35) % 1.3, t: u }),
+    rebuild: ['mat'],
+  },
+  shield: {
+    title: '⑤ 多重安全 · Shield Rings 3D', floorY: -1.35,
+    cap: '7 层防护示意（名称取自 IFU 安全联锁条目）· active 由内向外点亮 · explode 展开为分层塔',
+    make: () => createShieldRings3D(THREE, {}),
+    controls: [['active', 0, 7, 0.01, 7], ['explode', 0, 1, 0.01, 0], ['focus', -1, 6, 1, -1], ['t', 0, 20, 0.01, 2]],
+    params: (s) => ({ active: s.active, explode: s.explode, focus: s.focus >= 0 ? s.focus : null, t: s.t }),
+    labels: (s) => s.explode > 0.6 ? SAFETY7.map((n, i) => [`ring${i}`, `<b>${String(i + 1).padStart(2, '0')}</b> ${n}`, 'l']) : [['core', '多重安全联锁']],
+    anim: (u) => ({ active: Math.min(7, u * 1.6), explode: u > 6 ? Math.min(1, (u - 6) / 1.5) : 0, t: u }),
+  },
+  lock: {
+    title: '⑥ 5+4 激活验真 · Lock54', floorY: -1.62,
+    cap: '彩页原文：五端激活 + 四维验真（DA p.2）· 图形为示意，不解释“5”与“4”的具体含义',
+    make: () => createLock54(THREE, {}),
+    controls: [['progress', 0, 1, 0.001, 1], ['verified', 0, 1, 0.01, 1], ['t', 0, 20, 0.01, 1]],
+    params: (s) => ({ progress: s.progress, verified: s.verified, t: s.t }),
+    labels: (s) => [['node0', '五端激活'], ['ring3', '四维验真', 'l'], s.verified > 0.6 && ['check', '<b>验真通过</b>', 'l']],
+    anim: (u) => ({ progress: Math.min(1, u / 5), verified: u > 5.3 ? Math.min(1, (u - 5.3) / 1.2) : 0, t: u }),
+  },
+  particles: {
+    title: '⑦ 粒子数字 · Particle Number', floorY: -1.6,
+    cap: '7000 个种子粒子聚合为数字 · 212 例受试者（IFU p.32）',
+    make: (s) => createParticleNumber(THREE, { text: s.ptext || '212' }),
+    controls: [['ptext', ['212', '900', '1995', '175'], null, null, null, '数字'], ['assemble', 0, 1, 0.001, 1], ['t', 0, 20, 0.01, 0]],
+    params: (s) => ({ assemble: s.assemble, t: s.t }),
+    labels: (s) => [s.assemble > 0.9 && ['top', s.ptext === '212' ? '例受试者 · 多中心随机对照' : '']].filter((x) => x && x[1]),
+    anim: (u) => ({ assemble: Math.min(1, u / 3.5), t: u }),
+    rebuild: ['ptext'],
+  },
+  medals: {
+    title: '⑧ 临床中心 · Medallions', floorY: -0.75,
+    cap: '多中心临床试验单位（IFU p.32–33）· 图片来自彩页 DA p.5',
+    make: () => createMedallions(THREE, { textures: centerImgs.map((im) => im || null) }),
+    controls: [['reveal', 0, 1, 0.01, 1], ['focus', -1, 3, 1, -1], ['t', 0, 20, 0.01, 0]],
+    params: (s) => ({ reveal: s.reveal, focus: s.focus >= 0 ? s.focus : null, t: s.t }),
+    labels: () => CENTERS.map((n, i) => [`coin${i}`, n, 'plain']),
+    anim: (u) => ({ reveal: Math.min(1, u / 2.4), t: u }),
+  },
+};
+
+/* ---------------- state ---------------- */
+let cur = null, comp = null, state = {}, cam = {}, playing = false, playT0 = 0, playU = 0;
+const nav = document.getElementById('nav'), controlsEl = document.getElementById('controls'), labelsEl = document.getElementById('labels');
+for (const [k, it] of Object.entries(ITEMS)) { const b = document.createElement('button'); b.textContent = it.title.split(' · ')[0]; b.dataset.k = k; b.onclick = () => select(k); nav.appendChild(b); }
+
+function defaults(k) { const s = {}; for (const c of ITEMS[k].controls) s[c[0]] = Array.isArray(c[1]) ? c[1][0] : c[4]; return s; }
+function build(k) {
+  if (comp) { stage.scene.remove(comp.object3d); comp.dispose(); }
+  comp = ITEMS[k].make(state); stage.scene.add(comp.object3d);
+  floor.update({ y: ITEMS[k].floorY });
+}
+function select(k, st = {}, camIn = null, reset = false) {
+  const changedItem = cur !== k; cur = k;
+  const keys = () => (ITEMS[k].rebuild || []).map((r) => state[r]).join('|');
+  const prevRebuildKeys = changedItem ? null : keys();
+  state = { ...(changedItem || reset ? defaults(k) : state), ...st };
+  if (changedItem || prevRebuildKeys !== keys()) build(k);
+  if (changedItem || camIn || reset) cam = { ...comp.view, ...(camIn || {}) };
+  [...nav.querySelectorAll('button')].forEach((b) => b.classList.toggle('on', b.dataset.k === k));
+  document.getElementById('ptitle').textContent = ITEMS[k].title;
+  document.getElementById('cap').textContent = ITEMS[k].cap;
+  if (changedItem) buildControls();
+  syncControls(); render(); writeHash();
+}
+function buildControls() {
+  controlsEl.innerHTML = '';
+  for (const c of ITEMS[cur].controls) {
+    const [key, a, b, step, def, label] = c, row = document.createElement('div'); row.className = 'row';
+    const lab = document.createElement('label'); lab.textContent = label || key; row.appendChild(lab);
+    let inp;
+    if (Array.isArray(a)) { inp = document.createElement('select'); for (const v of a) { const op = document.createElement('option'); op.value = v; op.textContent = v === '' ? '—' : v; inp.appendChild(op); } }
+    else { inp = document.createElement('input'); inp.type = 'range'; inp.min = a; inp.max = b; inp.step = step; }
+    inp.dataset.key = key; row.appendChild(inp);
+    const out = document.createElement('output'); row.appendChild(out);
+    inp.oninput = () => { const v = inp.type === 'range' ? +inp.value : inp.value; select(cur, { [key]: v }); };
+    controlsEl.appendChild(row);
+  }
+}
+function syncControls() {
+  for (const inp of controlsEl.querySelectorAll('[data-key]')) { const v = state[inp.dataset.key]; inp.value = v; inp.parentElement.querySelector('output').textContent = typeof v === 'number' ? (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2)) : v; }
+}
+function render() {
+  const it = ITEMS[cur];
+  comp.update(it.params(state));
+  stage.orbit(cam);
+  stage.render();
+  // DOM labels via anchors
+  const w = innerWidth, h = innerHeight, P = projectAnchors(THREE, comp.anchors, stage.camera, w, h);
+  labelsEl.innerHTML = '';
+  for (const e of it.labels(state, comp)) {
+    if (!e) continue; const [name, html, cls] = e, p = P[name]; if (!p || !p.visible) continue;
+    const d = document.createElement('div'); d.className = 'lb' + (cls ? ' ' + cls : ''); d.innerHTML = html; d.style.left = p.x + 'px'; d.style.top = p.y + 'px'; labelsEl.appendChild(d);
+  }
+}
+function writeHash() {
+  const q = new URLSearchParams({ item: cur, ...Object.fromEntries(Object.entries(state).map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v])), az: +cam.azimuth.toFixed(3), el: +cam.elevation.toFixed(3), r: +cam.radius.toFixed(3) });
+  history.replaceState(null, '', '#' + q.toString());
+}
+function readHash() {
+  const q = new URLSearchParams(location.hash.slice(1)); const k = q.get('item') || 'matrix'; const st = {}, c = {};
+  for (const [key, v] of q) { if (key === 'item' || key === 'clean') continue; if (key === 'az') c.azimuth = +v; else if (key === 'el') c.elevation = +v; else if (key === 'r') c.radius = +v; else st[key] = isNaN(+v) || v === '' ? v : +v; }
+  if (q.has('clean')) document.body.classList.add('clean');
+  select(k, st, Object.keys(c).length ? c : null);
+}
+
+/* orbit: drag + wheel */
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, az: cam.azimuth, el: cam.elevation }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', (e) => { if (!drag) return; cam.azimuth = drag.az - (e.clientX - drag.x) * 0.006; cam.elevation = Math.max(-0.3, Math.min(1.4, drag.el + (e.clientY - drag.y) * 0.005)); render(); });
+canvas.addEventListener('pointerup', () => { drag = null; writeHash(); });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.radius = Math.max(2, Math.min(20, cam.radius * (1 + e.deltaY * 0.001))); render(); writeHash(); }, { passive: false });
+addEventListener('resize', () => { stage.setSize(innerWidth, innerHeight); render(); });
+document.getElementById('reset').onclick = () => { cam = { ...comp.view }; render(); writeHash(); };
+const playBtn = document.getElementById('play');
+const tick = (now) => { if (!playing) return; playU = (now - playT0) / 1000; Object.assign(state, ITEMS[cur].anim(playU)); syncControls(); render(); requestAnimationFrame(tick); };
+playBtn.onclick = () => { playing = !playing; playBtn.classList.toggle('on', playing); playBtn.textContent = playing ? '❚❚ 暂停' : '▶ 播放'; if (playing) { playT0 = performance.now() - playU * 1000; requestAnimationFrame(tick); } else writeHash(); };
+document.getElementById('replay').onclick = () => { playU = 0; playT0 = performance.now(); if (!playing) playBtn.click(); };
+
+/* automation hook: __set(item, state, cam) renders synchronously */
+window.__set = (k, st = {}, c = null, fresh = false) => { if (fresh) cur = null; select(k, st, c, true); return true; };
+window.__pixels = () => { const gl = stage.renderer.getContext(); const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight; const a = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, a); let hsh = 2166136261; for (let i = 0; i < a.length; i += 1) { hsh ^= a[i]; hsh = Math.imul(hsh, 16777619); } return { w, h, hash: (hsh >>> 0).toString(16) }; };
+readHash();
+window.__stage = stage; window.__comp = () => comp; window.__render = render;
+window.__ready = true;
+</script>
+</body>
+</html>

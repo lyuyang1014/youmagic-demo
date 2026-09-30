@@ -4,6 +4,43 @@
 //      IFU p.4（皮下组织较薄部位：颧骨、下颌、颞部、前额需减低能量；不可用于眼部）
 //      IFU p.21–22（升档疼痛且能量密度过低 → 增加脉冲时间；舒适范围内可升档；最低增量；热感反馈 2.0–3.0）
 // Everything thermal on this page is a schematic model (原理示意) — no tissue temperatures are claimed.
+// 3D: the pinned story is a YM3D createPulseTrain3D scene (one WebGL context via mount3D). Scroll drives
+// build-in → close-up on the 100 ms slabs → a camera glide that follows the playhead along the shot → pull-back.
+// The pulse-time slider (0.7–1.5 s → 7–15 × 100 ms) drives `pulses` and stays in sync with the oscilloscope.
+
+import * as THREE from 'three';
+import * as S3 from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createPulseTrain3D, projectAnchor } from '../ym3d/dataviz.mjs';
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built well before they enter the viewport, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
+
+/* host.mjs work-around (library issue, reported by integration QA): when a mount goes far off-screen the host calls
+   renderer.forceContextLoss() and on the way back rebuilds on the SAME canvas, whose context is still lost → createStage
+   throws ("reading 'precision'") and the fallback fires for good. Each build therefore renders into a fresh sibling canvas
+   under the host's own canvas, which stays on top (context-less, transparent) as the pointer / drag layer. */
+const freshStageLib = (YM) => ({
+  ...YM,
+  createStage(THREE_, canvas, opts) {
+    canvas.__ymRC?.remove();
+    const c = document.createElement('canvas');
+    c.className = 'ym3d-rc';
+    c.setAttribute('aria-hidden', 'true');
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;';
+    canvas.parentNode.insertBefore(c, canvas);
+    canvas.__ymRC = c;
+    return YM.createStage(THREE_, c, opts);
+  },
+});
 
 const T_LEAD = 0.08, T_PRE = 0.3, T_POST = 0.34, T_TAIL = 0.2;
 const T_MAX = T_LEAD + T_PRE + 1.5 + T_POST + T_TAIL;
@@ -111,15 +148,6 @@ export default {
     const heat = data.protocol.heatScale;
     const mixHex = (a, b, t) => '#' + [0, 2, 4].map((o) => Math.round(parseInt(a.slice(1 + o, 3 + o), 16) * (1 - t) + parseInt(b.slice(1 + o, 3 + o), 16) * t).toString(16).padStart(2, '0')).join('');
     const pills = Array.from({ length: 15 }, (_, i) => `<i style="--c:${mixHex('#8a5cf0', '#43e6a8', i / 14)}"></i>`).join('');
-    const slices = Array.from({ length: 10 }, (_, i) => `
-      <g class="pl-slice">
-        <rect x="${300 + i * 60 + 2}" y="84" width="56" height="152" rx="10" fill="url(#plRFv)"/>
-        <path d="${sinePath(300 + i * 60 + 8, 160, 44, 44, 3.5)}" class="pl-carrier"/>
-        <text x="${330 + i * 60}" y="110" class="pl-sn">${i + 1}</text>
-        <text x="${330 + i * 60}" y="296" class="pl-sl">100ms</text>
-      </g>`).join('');
-    const frost = (x0) => Array.from({ length: 12 }, (_, i) => `<circle class="pl-frost" cx="${x0 + 14 + ((i * 37) % 136)}" cy="${128 + ((i * 23) % 64)}" r="${1.4 + (i % 3) * 0.8}" style="animation-delay:${(-i * 0.37).toFixed(2)}s"/>`).join('');
-    const ticks = Array.from({ length: 11 }, (_, i) => `<line x1="${300 + i * 60}" x2="${300 + i * 60}" y1="262" y2="${i % 5 === 0 ? 274 : 269}"/>`).join('');
 
     root.innerHTML = `
     <div class="wrap">
@@ -138,46 +166,31 @@ export default {
           <li><span class="pl-steps__n num">03</span><b>冷却 · 射频 · 冷却</b><span>治疗前冷却 → 射频传送 → 治疗后冷却</span><i></i></li>
         </ol>
         <div class="pl-stage">
-          <div class="pl-bigtype num" aria-hidden="true">100<small>ms</small></div>
-          <svg class="pl-ribbon" viewBox="0 0 1200 320" role="img" aria-label="一发治疗示意：治疗前冷却，随后 1.0 秒射频被切分为 10 个 100 毫秒窄脉冲，之后为治疗后冷却">
-            <defs>
-              <linearGradient id="plRF" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#6a3fd0"/><stop offset=".55" stop-color="#8a5cf0"/><stop offset="1" stop-color="#43e6a8"/></linearGradient>
-              <linearGradient id="plRFv" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#b79bff"/><stop offset=".45" stop-color="#8a5cf0"/><stop offset="1" stop-color="#3b1f6e"/></linearGradient>
-              <linearGradient id="plCool" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#7fd4ff" stop-opacity=".85"/><stop offset="1" stop-color="#7fd4ff" stop-opacity=".12"/></linearGradient>
-              <linearGradient id="plScan" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-              <clipPath id="plClip"><rect x="296" y="80" width="608" height="160" rx="12"/></clipPath>
-            </defs>
-            <line class="pl-axis" x1="60" x2="1140" y1="262" y2="262"/>
-            <g class="pl-ticks">${ticks}</g>
-            <text class="pl-tl" x="300" y="296" text-anchor="middle">0</text>
-            <text class="pl-tl" x="900" y="296" text-anchor="middle">1.0 s</text>
-            <g class="pl-br">
-              <path d="M300 60 V50 H900 V60" class="pl-brk"/>
-              <text x="600" y="36" text-anchor="middle" class="pl-br-a">脉冲时间 1.0 s</text>
-              <text x="600" y="36" text-anchor="middle" class="pl-br-b">10 × 100 ms</text>
-            </g>
-            <g class="pl-coolg">
-              <rect x="96" y="112" width="164" height="96" rx="14" fill="url(#plCool)"/>
-              ${frost(96)}
-              <text x="178" y="96" text-anchor="middle" class="pl-ph">治疗前冷却</text>
-            </g>
-            <g class="pl-coolg">
-              <rect x="940" y="112" width="164" height="96" rx="14" fill="url(#plCool)"/>
-              ${frost(940)}
-              <text x="1022" y="96" text-anchor="middle" class="pl-ph">治疗后冷却</text>
-            </g>
-            <path class="pl-arrow" d="M265 160 h17 m-6 -6 l6 6 l-6 6"/>
-            <path class="pl-arrow" d="M918 160 h17 m-6 -6 l6 6 l-6 6"/>
-            <g class="pl-block">
-              <rect x="300" y="80" width="600" height="160" rx="16" fill="url(#plRF)"/>
-              <path d="${sinePath(312, 160, 576, 52, 30)}" class="pl-carrier"/>
-              <text x="600" y="168" text-anchor="middle" class="pl-bt">射频传送 · 1 发</text>
-            </g>
-            <g class="pl-slices">${slices}</g>
-            <rect class="pl-scan" x="280" y="80" width="80" height="160" fill="url(#plScan)" clip-path="url(#plClip)"/>
-          </svg>
+          <div class="pl-3d" role="img" aria-label="三维示意：一发治疗 = 治疗前冷却（冰块）→ 10 个 100 毫秒射频脉冲（发光薄片）→ 治疗后冷却；上方两条带为真皮、表皮温度的原理示意">
+            <div class="pl-lbls" aria-hidden="true">
+              <span class="pl-lb pl-lb--rf" data-a="rf"><b class="num pl-lb__n">10</b> × 100 ms = <b class="num pl-lb__s">1.0</b> s</span>
+              <span class="pl-lb pl-lb--unit" data-a="pulseFirst">1 个脉冲 = <b class="num">100</b> ms</span>
+              <span class="pl-lb pl-lb--d" data-a="dermis">真皮层 · 逐级升温</span>
+              <span class="pl-lb pl-lb--e" data-a="epidermis">表皮层 · 冷却保护</span>
+            </div>
+          </div>
+          <span class="chip pl-3d__sim">原理示意 · 温度带为示意</span>
+          <div class="pl-hud" aria-hidden="true">
+            <span class="pl-hud__ph" data-ph="0">治疗前冷却</span>
+            <span class="pl-hud__ph" data-ph="1">射频 <b class="num pl-hud__k">0</b> / <b class="num pl-hud__n">10</b> × 100 ms</span>
+            <span class="pl-hud__ph" data-ph="2">治疗后冷却</span>
+            <i class="pl-hud__bar"><i></i></i>
+          </div>
+          <div class="pl-3d__ctl">
+            <label class="pl-3d__f">
+              <span class="pl-3d__k">脉冲时间</span>
+              <input class="range pl-3d__r" type="range" min="0.7" max="1.5" step="0.1" value="1.0" aria-label="脉冲时间（秒），决定 100 毫秒脉冲个数">
+              <output class="pl-3d__o" aria-live="polite"><b class="num">1.0</b> s · <b class="num">10</b> × 100 ms</output>
+            </label>
+            <span class="micro pl-3d__hint">拖动可旋转视角</span>
+          </div>
         </div>
-        <p class="note pl-story__note">来源：使用说明书 第 9 页（脉冲时间 0.7–1.5 s，一个脉冲对应 0.1 秒）、第 15 页（“启动”模式三阶段）。冷却阶段宽度为示意。</p>
+        <p class="note pl-story__note">来源：使用说明书 第 9 页（脉冲时间 0.7–1.5 s，一个脉冲对应 0.1 秒）、第 15 页（“启动”模式三阶段）。冷却块长度、温度带形状为示意；${data.disclaimers.sim}</p>
       </div>
     </div>
 
@@ -327,24 +340,15 @@ export default {
       </div>
     </div>`;
 
-    setupStory(root.querySelector('.pl-story'), ctx);
-    setupScope(root.querySelector('.pl-scope'), ctx);
+    // one pulse time shared by the 3D story slider and the oscilloscope slider
+    const scope = setupScope(root.querySelector('.pl-scope'), ctx);
+    const story = setupStory(root.querySelector('.pl-story'), ctx, { p: 1.0, onP: (p) => scope.setP(p) });
+    scope.onP = (p) => story.setP(p);
     setupDyn(root.querySelector('.pl-dyn'), ctx);
   },
 };
 
 /* ---------- helpers ---------- */
-function sinePath(x, yc, w, a, cycles) {
-  const n = Math.max(12, Math.round(cycles * 12));
-  let d = '';
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    const env = Math.min(1, t * 8, (1 - t) * 8);
-    d += (i ? 'L' : 'M') + (x + t * w).toFixed(1) + ' ' + (yc - Math.sin(t * cycles * Math.PI * 2) * a * env).toFixed(1);
-  }
-  return d;
-}
-
 function faceSVG(zones) {
   const [zyg, jaw, temple, forehead] = zones; // 颧骨、下颌、颞部、前额
   return `<svg class="pl-facesvg" viewBox="0 0 240 250" role="img" aria-label="面部示意：${zones.join('、')}为需减低能量部位，眼部禁用">
@@ -361,67 +365,217 @@ function faceSVG(zones) {
 }
 
 /* =========================================================
-   1 · pinned story: 1 发 → 10 × 100 ms → 冷却/射频/冷却
+   1 · pinned 3D story: 1 发 → N × 100 ms → 冷却/射频/冷却
+   YM3D createPulseTrain3D in one mount3D context. Desktop: pinned, scroll-scrubbed camera
+   (build-in → close-up on the slabs → glide that follows the playhead → pull-back), then an
+   idle loop of the shot. Mobile: no pin, looping shot. Reduced motion: a single still.
    ========================================================= */
-function setupStory(el, ctx) {
-  const { gsap, ScrollTrigger } = ctx;
-  const q = (s) => el.querySelector(s), qa = (s) => [...el.querySelectorAll(s)];
-  const steps = qa('.pl-steps li');
-  const setStep = (i) => steps.forEach((s, k) => { s.classList.toggle('is-on', k === i); s.classList.toggle('is-past', k < i); });
-  const block = q('.pl-block'), slices = qa('.pl-slice'), cools = qa('.pl-coolg'), arrows = qa('.pl-arrow');
-  const sliceRects = slices.map((s) => s.querySelector('rect')), sliceWaves = slices.map((s) => s.querySelector('path'));
-  const tls = qa('.pl-tl');
-  const big = q('.pl-bigtype'), la = q('.pl-br-a'), lb = q('.pl-br-b'), scan = q('.pl-scan');
+const V = (target, radius, azimuth, elevation) => ({ target: [...target], radius, azimuth, elevation });
+function mixCam(a, b, k, out) {
+  for (let i = 0; i < 3; i++) out.target[i] = a.target[i] + (b.target[i] - a.target[i]) * k;
+  out.radius = a.radius + (b.radius - a.radius) * k;
+  out.azimuth = a.azimuth + (b.azimuth - a.azimuth) * k;
+  out.elevation = a.elevation + (b.elevation - a.elevation) * k;
+  return out;
+}
+const copyCam = (a, out) => mixCam(a, a, 0, out);
+/** YM3D fx/halo materials use AdditiveBlending with gl_FragColor.a = 1, which also ADDS alpha: on a transparent
+    stage every glow quad turns into an opaque dark square. Re-map them to add colour only (alpha untouched);
+    with the default premultiplied canvas the glow then composites additively over the page. */
+function additiveKeepsAlpha(THREE, root) {
+  root.traverse((o) => {
+    for (const m of [].concat(o.material || [])) {
+      if (m.blending !== THREE.AdditiveBlending) continue;
+      Object.assign(m, { blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor, blendEquationAlpha: THREE.AddEquation, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor });
+      m.needsUpdate = true;
+    }
+  });
+}
+let _fonts = null;
+const fontsReady = () => (_fonts ||= Promise.all(['600 40px Montserrat', '500 40px Montserrat'].map((f) => document.fonts?.load(f))).catch(() => {}));
 
-  const build = () => {
-    const tl = gsap.timeline({
-      paused: true,
-      defaults: { ease: 'power2.inOut' },
-      onUpdate() {
-        const t = tl.time();
-        setStep(t < 1.15 ? 0 : t < 3.05 ? 1 : 2);
-        const bar = steps.map((s) => s.querySelector('i'));
-        bar[0].style.transform = `scaleX(${clamp(t / 1.15, 0, 1)})`;
-        bar[1].style.transform = `scaleX(${clamp((t - 1.15) / 1.9, 0, 1)})`;
-        bar[2].style.transform = `scaleX(${clamp((t - 3.05) / 1.0, 0, 1)})`;
-      },
-    });
-    gsap.set(slices, { opacity: 0 });
-    gsap.set(cools, { opacity: 0 });
-    gsap.set(arrows, { opacity: 0 });
-    gsap.set(lb, { opacity: 0 });
-    gsap.set(scan, { opacity: 0 });
-    tl.to({}, { duration: 0.7 })
-      .fromTo(big, { opacity: 0.25, scale: 0.94 }, { opacity: 1, scale: 1, duration: 1.4, ease: 'power3.out' }, 0.6)
-      .to(slices, { opacity: 1, duration: 0.3, stagger: 0.06 }, 0.8)
-      .to(block, { opacity: 0, duration: 0.5 }, 1.1)
-      .to(sliceRects, { attr: { x: (i) => 300 + i * 60 + 7, width: 46 }, duration: 0.9, ease: 'expo.out' }, 1.35)
-      .to(sliceWaves, { scaleX: 0.8, transformOrigin: '50% 50%', duration: 0.9, ease: 'expo.out' }, 1.35)
-      .to(tls, { opacity: 0, duration: 0.3 }, 1.0)
-      .to(la, { opacity: 0, duration: 0.25 }, 1.2)
-      .to(lb, { opacity: 1, duration: 0.3 }, 1.4)
-      .fromTo(scan, { attr: { x: 250 }, opacity: 0 }, { attr: { x: 880 }, opacity: 1, duration: 1.2, ease: 'none' }, 1.9)
-      .to(scan, { opacity: 0, duration: 0.2 }, 2.95)
-      .fromTo(cools[0], { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.9, ease: 'expo.out' }, 3.1)
-      .fromTo(cools[1], { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.9, ease: 'expo.out' }, 3.25)
-      .to(arrows, { opacity: 1, duration: 0.4, stagger: 0.12 }, 3.5)
-      .to({}, { duration: 0.8 });
-    return tl;
+function setupStory(el, ctx, shared) {
+  const { gsap, ScrollTrigger } = ctx;
+  const { clamp: cl, seg, ease } = S3;
+  const q = (s) => el.querySelector(s), qa = (s) => [...el.querySelectorAll(s)];
+  const steps = qa('.pl-steps li'), bars = steps.map((s) => s.querySelector('i'));
+  const box = q('.pl-3d'), range = q('.pl-3d__r'), outP = q('.pl-3d__o');
+  const nEl = q('.pl-lb__n'), sEl = q('.pl-lb__s');
+  const reduced = !!ctx.reduced;
+  const st = { p: reduced ? 1 : 0, pT: reduced ? 1 : 0, story: false, N: shared.p * 10, Nt: shared.p * 10, loopT: 0, rev: reduced ? 1 : 0, dirty: true, step: -1, bars: [-1, -1, -1], w: 0, h: 0, px: 0, py: 0 };
+  let m = null;
+
+  /* ---- pulse-time slider (shared with the oscilloscope) ---- */
+  const showP = (p) => {
+    const n = Math.round(p * 10);
+    outP.innerHTML = `<b class="num">${p.toFixed(1)}</b> s · <b class="num">${n}</b> × 100 ms`;
+    range.value = String(p); range.style.setProperty('--p', ((p - 0.7) / 0.8) * 100 + '%');
+    nEl.textContent = String(n); sEl.textContent = p.toFixed(1);
+  };
+  function setP(p) {
+    p = Math.round(cl(p, 0.7, 1.5) * 10) / 10;
+    st.Nt = Math.round(p * 10); showP(p); st.dirty = true;
+    if (reduced) st.N = st.Nt;
+    m?.invalidate();
+  }
+  range.addEventListener('input', () => { setP(+range.value); shared.onP?.(Math.round(+range.value * 10) / 10); });
+  showP(shared.p);
+
+  /* ---- steps (01 · 02 · 03) ---- */
+  const setSteps = (i, b0, b1, b2) => {
+    if (i !== st.step) { steps.forEach((s, k) => { s.classList.toggle('is-on', k === i); s.classList.toggle('is-past', k < i); }); st.step = i; }
+    [b0, b1, b2].forEach((b, k) => { const v = Math.round(b * 200) / 200; if (v !== st.bars[k]) { st.bars[k] = v; bars[k].style.transform = `scaleX(${v})`; } });
   };
 
+  /* ---- camera keyframes (orbit params; x of C/D follows the shot layout) ---- */
+  const CAM = {
+    A: V([0, 0.42, 0], 9.4, -0.04, 0.7),
+    B: V([0, 0.66, 0.05], 4.9, -0.34, 0.28),
+    C: V([0, 0.52, 0.1], 3.9, -0.6, 0.13),
+    D: V([0, 0.86, 0.05], 4.9, -0.42, 0.19),
+    E: V([0, 0.84, 0.05], 5.3, -0.3, 0.25),
+    M: V([0, 0.8, 0.05], 6.5, -0.6, 0.32), // mobile / narrow hero
+  };
+  const cam = V([0, 0, 0], 1, 0, 0), ca = V([0, 0, 0], 1, 0, 0), cb = V([0, 0, 0], 1, 0, 0);
+  const LL = {};
+  const shotDur = (N) => 2.3 + N * 0.12;
+  const HOLD = 1.3;
+
+  /* ---- DOM labels stuck to component anchors ---- */
+  const LB = qa('.pl-lb').map((n) => ({ el: n, a: n.dataset.a, out: {}, on: false, tx: '' }));
+  const ALIGN = { rf: [-0.5, -1, 0, -14], pulseFirst: [-0.5, -1, 0, -12], dermis: [0, -0.5, 14, 0], epidermis: [0, -0.5, 14, 0] };
+  /* HUD: phase readout of the playhead (pre-cool · RF k/N · post-cool) */
+  const hud = q('.pl-hud'), hudPh = qa('.pl-hud__ph'), hudK = q('.pl-hud__k'), hudN = q('.pl-hud__n'), hudBar = q('.pl-hud__bar > i');
+  const H = { ph: -2, k: -1, n: -1, bar: -1 };
+  function setHud(on, ph, k, n, f) {
+    hud.classList.toggle('is-on', on);
+    if (ph !== H.ph) { H.ph = ph; hudPh.forEach((e, i) => { e.classList.toggle('is-on', i === ph); e.classList.toggle('is-done', i < ph); }); }
+    if (k !== H.k) { H.k = k; hudK.textContent = String(k); }
+    if (n !== H.n) { H.n = n; hudN.textContent = String(n); }
+    const b = Math.round(f * 400) / 400; if (b !== H.bar) { H.bar = b; hudBar.style.transform = `scaleX(${b})`; }
+  }
+
+  function frame(state, stage, t, dt, api) {
+    const { comp } = state;
+    const cv = stage.renderer.domElement, w = cv.clientWidth, h = cv.clientHeight;
+    if (w !== st.w || h !== st.h) { st.w = w; st.h = h; st.dirty = true; }
+    if (reduced && !st.dirty) return;
+    st.dirty = false;
+    const k6 = 1 - Math.exp(-dt * 6);
+    st.p = reduced ? 1 : st.p + (st.pT - st.p) * (1 - Math.exp(-dt * 7));
+    st.N = reduced || Math.abs(st.Nt - st.N) < 0.003 ? st.Nt : st.N + (st.Nt - st.N) * k6;
+    const N = st.N, L = comp.layout(N, LL);
+    const narrow = w / Math.max(1, h) < 1.25;
+    const asp = w / Math.max(1, h), fit = narrow ? Math.max(1, Math.pow(1.05 / Math.max(0.4, asp), 0.7)) : Math.max(1, Math.pow(1.8 / Math.max(0.4, asp), 0.72));
+    let reveal = 1, flow = 1, ribbons = 1, showRF = true, showUnit = false;
+    const p = st.p;
+
+    if (!reduced && st.story && p < 0.995) {
+      /* scroll-scrubbed story */
+      st.inLoop = false;
+      reveal = seg(p, 0, 0.2, ease.out); st.rev = Math.max(st.rev, reveal);
+      flow = cl((p - 0.46) / 0.42);
+      ribbons = seg(p, 0.42, 0.49, ease.linear); // temperature ribbons (and their head beads) only once the shot runs
+      const head = L.x0 + flow * L.total;
+      copyCam(CAM.C, ca); ca.target[0] = L.rf0 + 0.5;
+      copyCam(CAM.D, cb); cb.target[0] = head;
+      if (p < 0.2) mixCam(CAM.A, CAM.B, ease.inOut(p / 0.2), cam);
+      else if (p < 0.33) copyCam(CAM.B, cam);
+      else if (p < 0.46) mixCam(CAM.B, ca, ease.inOut((p - 0.33) / 0.13), cam);
+      else if (p < 0.88) mixCam(ca, cb, ease.inOut((p - 0.46) / 0.1), cam);
+      else { cb.target[0] = L.x1; mixCam(cb, CAM.E, ease.inOut((p - 0.88) / 0.12), cam); }
+      showRF = p < 0.47 || p > 0.9; showUnit = p > 0.36 && p < 0.47;
+      const i = p < 0.3 ? 0 : p < 0.46 ? 1 : 2;
+      setSteps(i, cl(p / 0.3), cl((p - 0.3) / 0.16), cl((p - 0.46) / 0.44));
+    } else if (!reduced) {
+      /* idle loop of the shot (after the story, and the whole time on mobile) */
+      if (!st.inLoop) { st.inLoop = true; st.loopT = shotDur(N); } // enter on the finished shot (hold), then replay
+      st.rev = Math.min(1, st.rev + dt / 2.2);
+      reveal = ease.out(st.rev);
+      if (st.rev >= 1) st.loopT += dt;
+      const dur = shotDur(N), u = st.loopT % (dur + HOLD);
+      if (u < dur) flow = u / dur;
+      else { flow = 1; ribbons = 1 - seg(u - dur, HOLD - 0.45, HOLD, ease.linear); }
+      const head = L.x0 + flow * L.total;
+      copyCam(narrow ? CAM.M : CAM.E, cam);
+      cam.target[0] = head * (narrow ? 0.14 : 0.16);
+      cam.azimuth += 0.05 * Math.sin(t * 0.21);
+      setSteps(2, 1, 1, 1);
+    } else {
+      copyCam(narrow ? CAM.M : CAM.E, cam);
+      setSteps(2, 1, 1, 1);
+    }
+    cam.radius *= fit;
+    // integration QA: the ribbon head beads + halos sat at the start of the (still empty) ribbons as a stray glowing
+    // orb above the pre-cool block before the playhead moved (story p 0.42–0.46, and at every loop restart) —
+    // fade the ribbons in with the first few % of the playhead so the bead appears as the "pen" that draws them.
+    ribbons *= seg(flow, 0, 0.045, ease.linear);
+
+    // pointer parallax + drag orbit (drag springs back when released)
+    if (!reduced) {
+      st.px += ((api.pointer.inside ? api.pointer.x : 0) - st.px) * k6 * 0.5;
+      st.py += ((api.pointer.inside ? api.pointer.y : 0) - st.py) * k6 * 0.5;
+      if (!api.drag.active) { const d = Math.exp(-dt * 1.1); api.drag.azimuth *= d; api.drag.elevation *= d; }
+      cam.azimuth += cl(api.drag.azimuth * 0.6, -1.2, 1.2) + st.px * 0.07;
+      cam.elevation = cl(cam.elevation + api.drag.elevation * 0.6 - st.py * 0.035, 0.02, 1.15);
+    }
+
+    comp.update({ t: reduced ? 1.2 : t, pulses: N, reveal, flow, ribbons, labels: 1 });
+    stage.orbit(cam);
+    stage.render();
+
+    /* labels */
+    const cam3 = stage.camera;
+    const vis = { rf: showRF && reveal > 0.85, pulseFirst: showUnit, dermis: ribbons > 0.6 && flow > 0.16, epidermis: ribbons > 0.6 && flow > 0.16 };
+    if (narrow && vis.dermis) vis.rf = false; // small screens: one set of labels at a time
+    {
+      const hx = L.x0 + flow * L.total, n = Math.round(N);
+      const ph = hx < L.rf0 ? 0 : hx <= L.rf1 ? 1 : 2;
+      const k = ph === 0 ? 0 : ph === 2 ? n : Math.min(n, Math.floor((hx - L.rf0) / 0.16) + 1);
+      setHud(!reduced && reveal > 0.9 && flow > 0.001 && flow < 0.999, ph, k, n, flow);
+    }
+    for (const l of LB) {
+      const o = projectAnchor(THREE, comp.anchors[l.a], cam3, w, h, l.out);
+      const on = !!vis[l.a] && o.visible && o.x > 8 && o.x < w - 8 && o.y > 8 && o.y < h - 8;
+      if (on !== l.on) { l.on = on; l.el.classList.toggle('is-on', on); }
+      if (on) {
+        let [ax, ay, dx, dy] = ALIGN[l.a];
+        if (dx > 0 && o.x > w * 0.62) { ax = -1; dx = -dx; } // flip side-labels inward near the right edge
+        l.el.style.transform = `translate3d(${(o.x + dx).toFixed(1)}px, ${(o.y + dy).toFixed(1)}px, 0) translate(${ax * 100}%, ${ay * 100}%)`;
+      }
+    }
+  }
+
+  fontsReady().then(() => {
+    m = mount3D(box, {
+      THREE, stageLib: precompileLib(freshStageLib(S3)), dpr: 1.5, draggable: !reduced,
+      stageOpts: { fov: 30, transparent: true, exposure: 1.05 },
+      build(stage) {
+        const comp = createPulseTrain3D(THREE, {});
+        additiveKeepsAlpha(THREE, comp.object3d); // transparent stage: glows must not write alpha (see note below)
+        stage.scene.add(comp.object3d);
+        const k = stage.lights.key;
+        Object.assign(k.shadow.camera, { left: -3.2, right: 3.2, top: 3.2, bottom: -3.2 }); k.shadow.camera.updateProjectionMatrix();
+        st.dirty = true;
+        return { comp };
+      },
+      frame,
+      dispose(s) { s?.comp?.dispose(); },
+      fallback(c) { c.classList.add('is-nogl'); },
+    });
+  });
+
+  /* ---- scroll: pinned story on desktop ---- */
   const mm = gsap.matchMedia();
   mm.add({ desk: '(min-width: 760px)', mob: '(max-width: 759px)' }, (c) => {
-    el.querySelector('.pl-ribbon').setAttribute('viewBox', c.conditions.mob ? '80 22 1040 292' : '0 0 1200 320');
-    const tl = build();
-    if (ctx.reduced) { tl.progress(1); return; }
-    if (c.conditions.desk) {
-      ScrollTrigger.create({ trigger: el, start: 'top top', end: '+=150%', pin: true, pinSpacing: true, scrub: 0.7, animation: tl });
-    } else {
-      tl.timeScale(1.25);
-      ScrollTrigger.create({ trigger: el, start: 'top 72%', once: true, onEnter: () => tl.play() });
-    }
-    return () => tl.kill();
+    if (reduced || !c.conditions.desk) { st.story = false; st.dirty = true; return; }
+    st.story = true;
+    const trig = ScrollTrigger.create({ trigger: el, start: 'top top', end: '+=240%', pin: true, pinSpacing: true, onUpdate: (s) => { st.pT = s.progress; } });
+    st.pT = trig.progress;
+    return () => { trig.kill(); st.story = false; };
   });
+
+  return { setP };
 }
 
 /* =========================================================
@@ -753,7 +907,8 @@ function setupScope(el, ctx) {
   }
 
   const onParam = (resetCool) => { sync(resetCool); ghostFill(); newShot(false); if (ctx.reduced) { tau = shot.tm.end; draw(); } };
-  rP.addEventListener('input', () => { S.p = Math.round(+rP.value * 10) / 10; onParam(true); });
+  const api = { onP: null, setP(p) { p = Math.round(p * 10) / 10; if (p === S.p) return; S.p = p; rP.value = String(p); onParam(true); } };
+  rP.addEventListener('input', () => { S.p = Math.round(+rP.value * 10) / 10; onParam(true); api.onP?.(S.p); });
   rL.addEventListener('input', () => { S.lv = Math.round(+rL.value * 2) / 2; onParam(true); });
   coolBtns.forEach((b) => b.addEventListener('click', () => { S.cool = +b.dataset.c; onParam(false); }));
   qa('.pl-mode button').forEach((b) => b.addEventListener('click', () => {
@@ -783,6 +938,7 @@ function setupScope(el, ctx) {
   }
   lib.onResize(() => { layout(); draw(); });
   document.fonts?.ready.then(() => draw());
+  return api;
 }
 
 /* =========================================================

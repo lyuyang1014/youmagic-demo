@@ -236,3 +236,76 @@
   #mechanism .mx-tl span { font-size: 10px; }
   #mechanism .mx-tl span em { display: none; }
 }
+
+/* ---------- 3D view (YM3D skin block · default tab) ---------- */
+#mechanism .mx-3d {
+  position: absolute; inset: 0; z-index: 1; visibility: hidden; overflow: hidden;
+  background:
+    radial-gradient(60% 55% at 58% 58%, rgba(138, 92, 240, .16), transparent 70%),
+    radial-gradient(40% 40% at 18% 20%, rgba(67, 230, 168, .06), transparent 70%),
+    linear-gradient(180deg, #0a0912 0%, #07070c 100%);
+}
+#mechanism.mx-v3d .mx-3d { visibility: visible; }
+#mechanism.mx-v3d .mx-canvas { visibility: hidden; }
+#mechanism .mx-3d__gl { position: absolute; inset: 0; }
+#mechanism .mx-3d__lbls { position: absolute; inset: 0; pointer-events: none; }
+#mechanism .mx-3l {
+  position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .4s var(--ease-out); will-change: transform, opacity;
+  font-size: 12px; line-height: 1.2; color: #fff; white-space: nowrap;
+}
+#mechanism .mx-3l.is-on { opacity: 1; }
+#mechanism .mx-3l i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px rgba(255,255,255,.85); }
+#mechanism .mx-3l b {
+  position: absolute; top: -12px; display: block; font-weight: 500; letter-spacing: .03em; padding: 4px 9px; border-radius: 8px;
+  background: rgba(9, 9, 16, .84); border: 1px solid rgba(255, 255, 255, .14); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+}
+#mechanism .mx-3l small { display: block; margin-top: 2px; font: 400 9.5px/1.1 var(--f-mono); letter-spacing: .08em; color: rgba(226, 222, 242, .84); }
+#mechanism .mx-3l em { font-style: normal; font-size: 11px; margin-left: 4px; color: var(--heat-5); }
+#mechanism .mx-3l--l b { right: 22px; }
+#mechanism .mx-3l--r b { left: 22px; }
+#mechanism .mx-3l::after { content: ""; position: absolute; top: 0; height: 1px; width: 16px; background: rgba(255,255,255,.5); }
+#mechanism .mx-3l--l::after { right: 4px; }
+#mechanism .mx-3l--r::after { left: 4px; }
+#mechanism .mx-3l--heat i { background: var(--heat-5); box-shadow: 0 0 12px var(--heat-4); }
+#mechanism .mx-3l--heat b { border-color: rgba(240, 96, 63, .55); }
+#mechanism .mx-3l--cool i { background: var(--cool); box-shadow: 0 0 12px var(--cool); }
+#mechanism .mx-3l--cool b { border-color: rgba(127, 212, 255, .55); }
+#mechanism .mx-3l--cool em { color: var(--cool); }
+#mechanism .mx-3l--pad i { background: var(--mint); box-shadow: 0 0 12px var(--mint); }
+#mechanism .mx-3l--pad b { border-color: rgba(67, 230, 168, .5); }
+#mechanism .mx-3l--field i { background: #b89cff; box-shadow: 0 0 12px var(--violet); }
+#mechanism .mx-3l--field b { border-color: rgba(138, 92, 240, .6); }
+#mechanism .mx-3l--col i { background: #d9a6ff; box-shadow: 0 0 12px #c25eeb; }
+#mechanism .mx-3l--col b { border-color: rgba(194, 94, 235, .55); }
+#mechanism .mx-3d__tag {
+  position: absolute; right: 12px; bottom: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 7px; pointer-events: none;
+  padding: 5px 11px 5px 9px; border-radius: 999px; font-size: 11px; color: var(--text-2);
+  background: rgba(7, 7, 12, .72); border: 1px solid var(--line-2); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+#mechanism .mx-3d__tag i { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); box-shadow: 0 0 8px var(--violet); }
+#mechanism .mx-3d__hint {
+  position: absolute; left: 12px; bottom: 12px; z-index: 2; pointer-events: none;
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 11px; color: var(--text-3);
+  background: rgba(7, 7, 12, .55); border: 1px solid var(--line); transition: opacity .6s;
+}
+#mechanism .mx-3d__hint::before { content: "⟲"; font-size: 13px; color: var(--mint); }
+#mechanism .mx-3d.is-dragged .mx-3d__hint { opacity: 0; }
+@media (hover: none) { #mechanism .mx-3d__hint { display: none; } }
+#mechanism.mx-v3d .mx-hud--tr { right: 12px; }
+#mechanism.mx-v3d .mx-hud--bl { bottom: 46px; }
+#mechanism .mx-vsw { pointer-events: auto; background: rgba(7, 7, 12, .72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); flex-wrap: nowrap; }
+#mechanism .mx-vsw button { padding: 5px 12px; font-size: 11.5px; white-space: nowrap; }
+#mechanism .mx-vsw button:disabled { opacity: .35; cursor: not-allowed; }
+#mechanism .mx-hud--tl { z-index: 3; }
+#mechanism .mx-hud--tr, #mechanism .mx-hud--bl { z-index: 3; }
+@media (max-width: 640px) {
+  #mechanism .mx-vsw button { padding: 5px 9px; font-size: 11px; }
+  #mechanism .mx-3l { font-size: 10.5px; }
+  #mechanism .mx-3l b { padding: 3px 7px; top: -10px; }
+  #mechanism .mx-3l small { display: none; }
+  #mechanism .mx-3l--l b { right: 12px; }
+  #mechanism .mx-3l--r b { left: 12px; }
+  #mechanism .mx-3l::after { width: 8px; }
+  #mechanism .mx-3d__tag { right: 8px; bottom: 8px; font-size: 10px; padding: 4px 9px 4px 8px; }
+}

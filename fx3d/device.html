@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YM5 3D Device</title>
+<meta name="description" content="YM3D device.mjs demo — procedural YM5 console, handpiece and disposable tip (turntable, exploded view, screen states, tip insert).">
+<style>
+  :root { --bg:#07070c; --panel:#0f1017; --line:#23252f; --ink:#e9ebf1; --mute:#8a90a0; --violet:#8a5cf0; --mint:#43e6a8; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:13px/1.45 -apple-system,"PingFang SC","Helvetica Neue",sans-serif; }
+  #app { display:grid; grid-template-columns: 1fr 300px; height:100%; }
+  #view { position:relative; overflow:hidden; display:flex; }
+  #view canvas { flex:1 1 auto; width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
+  #view canvas:active { cursor:grabbing; }
+  #ref { display:none; height:100%; width:50%; object-fit:contain; background:#f2f2f3; }
+  body.compare #ref { display:block; }
+  body.compare #view canvas { width:50%; flex:0 0 50%; }
+  #hud { position:absolute; left:16px; bottom:14px; color:var(--mute); font-size:12px; pointer-events:none; }
+  aside { background:var(--panel); border-left:1px solid var(--line); padding:16px; overflow:auto; }
+  h1 { font-size:14px; margin:0 0 2px; letter-spacing:.04em; } .sub { color:var(--mute); margin:0 0 14px; font-size:12px; }
+  fieldset { border:1px solid var(--line); border-radius:10px; margin:0 0 12px; padding:10px 12px 8px; }
+  legend { color:var(--mute); padding:0 6px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  label { display:grid; grid-template-columns: 92px 1fr 40px; gap:8px; align-items:center; margin:5px 0; }
+  label output { color:var(--mute); font-variant-numeric:tabular-nums; text-align:right; }
+  input[type=range] { width:100%; accent-color:var(--violet); }
+  select, button { background:#171923; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 8px; font:inherit; }
+  button { cursor:pointer; } button[aria-pressed=true] { border-color:var(--violet); color:#fff; background:#221a3a; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 6px; }
+  .seg button { flex:1; }
+  @media (max-width: 760px) { #app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; } aside { border-left:0; border-top:1px solid var(--line); } }
+  body.shot aside, body.shot #hud { display:none; } body.shot #app { grid-template-columns: 1fr; }
+</style>
+<script type="importmap">{"imports":{"three":"../vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<div id="app">
+  <div id="view"><img id="ref" src="../assets/img/device.webp" alt="YM5 reference render"><canvas id="c"></canvas><div id="hud">拖动旋转 · 滚轮缩放</div></div>
+  <aside>
+    <h1>YM3D · device.mjs</h1>
+    <p class="sub">YM5 主机 / 治疗手具 / 一次性治疗头端 — 程序化 3D 模型</p>
+    <fieldset><legend>View</legend>
+      <div class="row seg" id="views"><button data-v="device">主机</button><button data-v="handpiece">手具</button><button data-v="tip">头端</button><button data-v="compare">对照渲染</button></div>
+      <div class="row"><button id="play">▶ 播放</button><button id="spin">⟳ 转台</button></div>
+    </fieldset>
+    <fieldset id="fsDevice"><legend>Console</legend>
+      <label>turntable<input type="range" id="turntable" min="-3.1416" max="3.1416" step="0.01"><output></output></label>
+      <label>explode<input type="range" id="explode" min="0" max="1" step="0.01"><output></output></label>
+      <label>rimGlow<input type="range" id="rimGlow" min="0" max="1" step="0.01"><output></output></label>
+      <label>float<input type="range" id="float" min="0" max="1" step="0.01"><output></output></label>
+      <label>screen<select id="screen"><option>logo</option><option>treatment</option><option>activate</option><option>boot</option><option>off</option></select><span></span></label>
+      <label>highlight<select id="highlight"><option value="">—</option><option>screen</option><option>handpiece</option><option>tip</option><option>base</option><option>badge</option><option>bracket</option><option>handles</option><option>panel</option><option>power</option><option>shell</option><option>cables</option></select><span></span></label>
+      <label>功率档位<input type="range" id="level" min="0.5" max="8" step="0.5"><output></output></label>
+      <label>脉冲时间<input type="range" id="pulse" min="0.7" max="1.5" step="0.1"><output></output></label>
+      <label>制冷强度<input type="range" id="cooling" min="1" max="4" step="1"><output></output></label>
+      <label>status<select id="status"><option>done</option><option>ready</option><option>standby</option><option>firing</option></select><span></span></label>
+      <label>selected<select id="selected"><option value="">—</option><option>level</option><option>cooling</option><option>pulse</option></select><span></span></label>
+    </fieldset>
+    <fieldset><legend>Handpiece · Tip</legend>
+      <div class="row"><button id="insert">▶ 头端插入演示</button></div>
+      <label>tipInsert<input type="range" id="tipInsert" min="0" max="1" step="0.005"><output></output></label>
+      <label>enable<input type="range" id="enablePressed" min="0" max="1" step="0.01"><output></output></label>
+      <label>button<select id="buttonPress"><option value="">—</option><option>R</option><option>minus</option><option>M</option><option>plus</option></select><span></span></label>
+      <label>RF glow<input type="range" id="electrodeGlow" min="0" max="1" step="0.01"><output></output></label>
+      <label>cooling<input type="range" id="hpCooling" min="0" max="1" step="0.01"><output></output></label>
+      <label>hp highlight<select id="hpHighlight"><option value="">—</option><option>enable</option><option>controls</option><option>tip</option><option>electrode</option><option>body</option></select><span></span></label>
+    </fieldset>
+    <p class="sub">URL hash 可复现状态，例如 <code>#view=device&amp;explode=0.6&amp;screen=treatment</code></p>
+  </aside>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { createStage } from '../js/ym3d/stage.mjs';
+import { createDevice, createHandpiece, createTip } from '../js/ym3d/device.mjs';
+
+const Q = new URLSearchParams(location.search), SHOT = Q.has('shot');
+if (SHOT) document.body.classList.add('shot');
+const DEF = { view: 'device', t: 0, turntable: 0, explode: 0, screen: 'logo', rimGlow: 0.6, float: 0, highlight: '', level: 6, pulse: 1.0, cooling: 1, status: 'done', selected: '',
+  tipInsert: 1, enablePressed: 0, buttonPress: '', electrodeGlow: 0, hpCooling: 0, hpHighlight: '', az: -0.55, el: 0.14, r: 3.9, ty: 0.64, haz: 0.35, hel: 0.25, hr: 0.5, htx: 0, hty: 0, htz: 0, floor: 1, bg: '' };
+const S = { ...DEF };
+const parseInto = (str) => { for (const [k, v] of new URLSearchParams(str)) if (k in DEF) S[k] = typeof DEF[k] === 'number' ? parseFloat(v) : v; };
+parseInto(location.hash.slice(1)); parseInto(location.search.slice(1));
+
+const canvas = document.getElementById('c');
+const stage = createStage(THREE, canvas, { width: 800, height: 800, dpr: SHOT ? 1 : Math.min(2, devicePixelRatio || 1), preserveDrawingBuffer: SHOT, exposure: 1.0, fov: 30 });
+const { scene, camera, renderer } = stage;
+stage.lights.key.shadow.camera.left = -1.2; stage.lights.key.shadow.camera.right = 1.2; stage.lights.key.shadow.camera.top = 1.6; stage.lights.key.shadow.camera.bottom = -0.6;
+stage.lights.key.position.set(2.2, 4.2, 3.2); stage.lights.key.target.position.set(0, 0.6, 0); scene.add(stage.lights.key.target);
+stage.lights.key.shadow.camera.updateProjectionMatrix();
+stage.lights.rim.intensity = 0.9; // softer violet back light for the demo floor
+
+// floor: dark satin disc that fades into the stage
+const floorTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d'); const gr = g.createRadialGradient(256, 256, 0, 256, 256, 256); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 512, 512); const t = new THREE.CanvasTexture(c); return t; })();
+const floor = new THREE.Mesh(new THREE.CircleGeometry(4, 96).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x14141b, roughness: 0.78, metalness: 0.0, alphaMap: floorTex, transparent: true, envMapIntensity: 0.4 }));
+floor.receiveShadow = true; scene.add(floor);
+
+const device = createDevice(THREE, {});
+scene.add(device.object3d);
+const hpRoot = new THREE.Group(); scene.add(hpRoot);
+const hp = createHandpiece(THREE, {});
+hp.object3d.position.y = 0.11; hpRoot.add(hp.object3d); hpRoot.rotation.set(0.15, 0.0, 2.3);
+const tipRoot = new THREE.Group(); scene.add(tipRoot); const tip = createTip(THREE, {}); tip.object3d.position.y = -0.015; tipRoot.add(tip.object3d); tipRoot.rotation.set(0.35, 0, 0);
+
+// ---- UI binding ----
+const ids = ['turntable', 'explode', 'rimGlow', 'float', 'screen', 'highlight', 'level', 'pulse', 'cooling', 'status', 'selected', 'tipInsert', 'enablePressed', 'buttonPress', 'electrodeGlow', 'hpCooling', 'hpHighlight'];
+const fmt = (v) => typeof v === 'number' ? (Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1)) : v;
+function syncUI() {
+  for (const id of ids) { const el = document.getElementById(id); if (!el) continue; el.value = S[id]; const out = el.parentElement.querySelector('output'); if (out) out.textContent = fmt(S[id]); }
+  document.querySelectorAll('#views button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === S.view)));
+  document.getElementById('play').setAttribute('aria-pressed', String(playing)); document.getElementById('spin').setAttribute('aria-pressed', String(spinning));
+  document.body.classList.toggle('compare', S.view === 'compare');
+}
+for (const id of ids) { const el = document.getElementById(id); el.addEventListener('input', () => { S[id] = typeof DEF[id] === 'number' ? parseFloat(el.value) : el.value; syncUI(); writeHash(); if (!playing) frame(); }); }
+document.querySelectorAll('#views button').forEach((b) => b.addEventListener('click', () => { S.view = b.dataset.v; if (S.view === 'compare') Object.assign(S, { az: -0.62, el: 0.2, r: 3.75, ty: 0.66, turntable: 0, explode: 0, screen: 'logo' }); syncUI(); resize(); writeHash(); frame(); }));
+let playing = !SHOT, spinning = false, insertStart = -1;
+document.getElementById('play').onclick = () => { playing = !playing; syncUI(); if (playing) loop(); };
+document.getElementById('spin').onclick = () => { spinning = !spinning; syncUI(); if (!playing) { playing = true; loop(); } };
+document.getElementById('insert').onclick = () => { insertStart = S.t; if (S.view !== 'handpiece') S.view = 'handpiece'; if (!playing) { playing = true; loop(); } syncUI(); };
+function writeHash() { if (SHOT) return; const o = {}; for (const k in DEF) if (S[k] !== DEF[k] && k !== 't') o[k] = typeof S[k] === 'number' ? +S[k].toFixed(3) : S[k]; history.replaceState(null, '', '#' + new URLSearchParams(o)); }
+
+// ---- drag orbit ----
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', (e) => { if (!drag) return; const dx = (e.clientX - drag.x) / canvas.clientWidth, dy = (e.clientY - drag.y) / canvas.clientHeight; drag = { x: e.clientX, y: e.clientY };
+  if (!(S.view === 'device' || S.view === 'compare')) { S.haz -= dx * 4; S.hel = Math.max(-1.3, Math.min(1.3, S.hel + dy * 3)); } else { S.az -= dx * 4; S.el = Math.max(-0.4, Math.min(1.35, S.el + dy * 3)); } if (!playing) frame(); });
+canvas.addEventListener('pointerup', () => { drag = null; writeHash(); });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); const k = Math.exp(e.deltaY * 0.001); if (!(S.view === 'device' || S.view === 'compare')) S.hr = Math.max(0.06, Math.min(1.5, S.hr * k)); else S.r = Math.max(0.8, Math.min(8, S.r * k)); if (!playing) frame(); }, { passive: false });
+
+// ---- render ----
+function resize() {
+  document.body.classList.toggle('compare', S.view === 'compare');
+  stage.setSize(Math.max(1, canvas.clientWidth), Math.max(1, canvas.clientHeight));
+}
+function frame() {
+  const dev = S.view === 'device' || S.view === 'compare';
+  device.object3d.visible = dev; hpRoot.visible = S.view === 'handpiece'; tipRoot.visible = S.view === 'tip'; floor.visible = dev && !!S.floor && S.view !== 'compare';
+  const light = S.view === 'compare' || S.bg === 'light';
+  scene.background = new THREE.Color(light ? 0xf2f2f3 : 0x07070c);
+  let tipInsert = S.tipInsert;
+  if (insertStart >= 0) { const k = (S.t - insertStart) / 2.6; tipInsert = Math.min(1, Math.max(0, k)); if (k > 1.6) insertStart = -1; }
+  const sv = { level: S.level, pulse: S.pulse, cooling: S.cooling, status: S.status, selected: S.selected || null };
+  device.update({ t: S.t, turntable: S.turntable, explode: S.explode, screen: S.screen, screenValues: sv, rimGlow: S.rimGlow, float: S.float, highlight: S.highlight || null,
+    tipInsert: dev ? S.tipInsert : 1, enablePressed: S.enablePressed, electrodeGlow: S.electrodeGlow, cooling: S.hpCooling, buttonPress: S.buttonPress || null });
+  tip.update({ t: S.t, electrodeGlow: S.electrodeGlow, cooling: S.hpCooling, spin: S.turntable });
+  hp.update({ t: S.t, tipInsert, enablePressed: S.enablePressed, buttonPress: S.buttonPress || null, electrodeGlow: S.electrodeGlow, cooling: S.hpCooling, highlight: S.hpHighlight || null });
+  if (dev) stage.orbit({ target: [0, S.ty, 0], radius: S.r, azimuth: S.az, elevation: S.el });
+  else stage.orbit({ target: [S.htx, S.hty, S.htz], radius: S.hr, azimuth: S.haz, elevation: S.hel });
+  camera.near = dev ? 0.05 : 0.01; camera.updateProjectionMatrix();
+  stage.render();
+}
+let last = 0;
+function loop(now = performance.now()) {
+  if (!playing) return;
+  const dt = last ? Math.min(0.05, (now - last) / 1000) : 0; last = now;
+  S.t += dt; if (spinning) S.turntable = ((S.turntable + dt * 0.5 + Math.PI) % (2 * Math.PI)) - Math.PI;
+  frame(); requestAnimationFrame(loop);
+}
+addEventListener('resize', () => { resize(); if (!playing) frame(); });
+resize(); syncUI(); frame(); if (playing) requestAnimationFrame(loop);
+
+// ---- automation hook (puppeteer / video QA) ----
+window.YMDEMO = {
+  S, device, hp, tip, stage,
+  set(o) { Object.assign(S, DEF, o); resize(); frame(); return true; },
+  shot() { return canvas.toDataURL('image/png'); },
+  anchors() { const out = {}; for (const n of device.anchorNames) { const v = device.anchor(n); if (v) out[n] = v.clone().project(camera); } return out; },
+  ready: true,
+};
+</script>
+</body>
+</html>

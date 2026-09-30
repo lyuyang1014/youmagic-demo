@@ -4,6 +4,42 @@
 //   2) Joule heating q = σ|E|² from face currents, scaled by the power level
 //   3) transient heat diffusion + perfusion + conductive surface cooling from the cryogen-cooled electrode
 // Every temperature is RELATIVE and schematic (原理示意). Device facts come from DATA / IFU pages cited inline.
+// 3D view (default tab, YM3D skincube): the same controller state (phase / power / cooling / pulse / story step) drives a
+// 3D skin block — tip press, RF current to the neutral pad, dermal heat taken from this solver's temperature field,
+// cryogen frost from the electrode temperature, collagen contraction — and a scroll-scrubbed camera orbit per step.
+
+import * as THREE from 'three';
+import * as YM from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createSkinCube } from '../ym3d/skincube.mjs';
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built well before they enter the viewport, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
+
+/* Work-around for a ym3d/host.mjs issue: when a mount is released (far off-screen) the host calls
+   renderer.forceContextLoss() and, on the way back, builds the next stage on the SAME canvas, whose context is still
+   lost → createStage throws and the fallback fires (3D gone for good). Each build therefore renders into a fresh
+   sibling canvas under the host's own canvas, which stays on top, context-less and transparent, as the pointer layer. */
+const freshStageLib = (YM) => ({
+  ...YM,
+  createStage(THREE, canvas, opts) {
+    canvas.__ymRC?.remove();
+    const c = document.createElement('canvas');
+    c.className = 'ym3d-rc';
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;';
+    canvas.parentNode.insertBefore(c, canvas);
+    canvas.__ymRC = c;
+    return YM.createStage(THREE, c, opts);
+  },
+});
 
 /* ------------------------------------------------------------------ */
 /* physics model                                                        */
@@ -319,6 +355,58 @@ const BODY_SVG = `
   <text x="99" y="118" class="mx-body__t mx-body__t--s">腰部/身体两侧</text>
 </svg>`;
 
+/* 3D view: DOM labels pinned to skincube anchors (compliance: bottom strip = 肌肉层, never "SMAS"; no mm / °C) */
+const LBL3 = [
+  { k: 'epidermis', zh: '表皮', en: 'EPIDERMIS', side: 'l' },
+  { k: 'dermis', zh: '真皮', en: 'DERMIS', side: 'l' },
+  { k: 'subcutis', zh: '皮下脂肪 · 纤维隔', en: 'FAT · SEPTA', side: 'l' },
+  { k: 'smas', zh: '肌肉层', en: 'MUSCLE', side: 'l' },
+  { k: 'tipTop', zh: '治疗头端 · 6.78 MHz', en: 'YM5-TP4-900 · 4.0 cm²', side: 'r' },
+  { k: 'field', zh: '等势线 · 交变电场', en: '原理示意', side: 'r', cls: 'mx-3l--field', at: [2.0, -0.46, -0.3] },
+  { k: 'heatCore', zh: '真皮加热', val: 1, side: 'r', cls: 'mx-3l--heat' },
+  { k: 'cool', zh: '表皮冷却', val: 1, side: 'l', cls: 'mx-3l--cool' },
+  { k: 'pad', zh: '中性电极片 · 闭合回路', en: 'RETURN PAD', side: 'r', cls: 'mx-3l--pad' },
+  { k: 'typeI', zh: '受热胶原 · 即刻收缩', en: '原理示意', side: 'r', cls: 'mx-3l--col' },
+];
+// camera keyframes per story step (skincube units: 1 = 1 cm; fov 30) — 发射 → 回流 → 加热 → 冷却 → 胶原
+const CAM3 = [
+  { ty: -0.55, r: 13.2, az: 0.62, el: 0.40 },
+  { ty: -1.70, r: 17.6, az: 1.02, el: 0.12 },
+  { ty: -0.72, r: 11.6, az: 0.74, el: 0.31 },
+  { ty: -0.45, r: 11.8, az: 0.36, el: 0.56 },
+  { ty: -0.66, r: 7.8, az: 0.82, el: 0.19 },
+];
+
+// step-01 equipotentials (3D): contour lines of a schematic potential (distance to the 2 × 2 cm electrode patch)
+// drawn on the block's cut faces and the notch walls; each line pulses with a slowed outward wave (原理示意, not a solution)
+const FIELD_D = [0.2, 0.44, 0.74, 1.1, 1.52, 2.0];
+const FIELD_VS = `varying vec3 vP;
+void main(){ vec4 wp = modelMatrix * vec4(position, 1.); vP = wp.xyz; gl_Position = projectionMatrix * viewMatrix * wp; }`;
+const FIELD_FS = `uniform float uT, uAmp; varying vec3 vP;
+float rb(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.)) + min(max(q.x, q.y), 0.) - r; }
+void main(){
+  float sq = rb(vP.xz, vec2(1.0), 0.22);
+  float d = length(vec2(max(sq, 0.), min(vP.y, 0.)));
+  float fw = fwidth(d) * 1.1 + 0.003;
+  vec4 acc = vec4(vec3(0.42, 0.26, 0.95) * 0.16, 0.16) * exp(-d * 2.4);   // field wash, strongest under the electrode
+  ${FIELD_D.map((v, k) => `{ float x = abs(d - ${v.toFixed(3)}); float w = 0.5 + 0.5 * sin(uT * 5.0265 - ${(k * 1.15).toFixed(2)});
+    float a = ((1. - smoothstep(fw * 1.1, fw * 2.8, x)) * 0.95 + exp(-x * x / 0.0030) * 0.26) * (0.42 + 0.58 * w * w) * ${(1 - 0.08 * k).toFixed(2)};
+    vec3 c = mix(mix(vec3(0.5, 0.3, 1.0), vec3(0.2, 0.85, 0.62), ${(k / (FIELD_D.length - 1) * 0.8).toFixed(3)}), vec3(0.93, 0.9, 1.0), 0.35 * w * w);
+    acc = vec4(c * a, a) + acc * (1. - a); }`).join('\n  ')}
+  gl_FragColor = acc * uAmp * smoothstep(-0.03, -0.13, vP.y);
+}`;
+
+// is the tissue face an anchor sits on turned towards the camera? (block at the origin, 4 × 4 cm; layer anchors live on the
+// front-left edge x = −2, z = +2; heat / collagen inside the front-right notch; the field label on the right face x = +2)
+function faceVisible(k, cp) {
+  switch (k) {
+    case 'epidermis': case 'dermis': case 'subcutis': case 'smas': return cp.z > 2 || cp.x < -2;
+    case 'heatCore': case 'typeI': case 'cool': return cp.x > 1 || cp.z > 1;
+    case 'field': return cp.x > 2.2;
+    default: return true;
+  }
+}
+
 const PROBES = [
   { name: '表皮', color: '#7fd4ff' },
   { name: '真皮', color: '#ffc45e' },
@@ -340,7 +428,7 @@ export default {
         <header class="sec-head">
           <span class="eyebrow">03 · MECHANISM</span>
           <h2 class="h1" data-reveal>向深处加热，<span class="grad-text mx-nw">为表皮降温</span></h2>
-          <p class="lead" data-reveal>一个实时求解的皮肤截面：电势场由迭代求解器算出，焦耳热与热扩散逐帧计算。调节功率档位、制冷强度与脉冲时间，按下「发射」，观察<b class="hl">治疗前冷却 → 射频传送 → 治疗后冷却</b>的全过程；拖动探针，读取任意位置的相对温升。</p>
+          <p class="lead" data-reveal>一块可旋转的 3D 皮肤组织块，与实时求解的 2D 皮肤截面共用同一套参数：电势场由迭代求解器算出，焦耳热与热扩散逐帧计算。调节功率档位、制冷强度与脉冲时间，按下「发射」，观察<b class="hl">治疗前冷却 → 射频传送 → 治疗后冷却</b>的全过程；切换到「剖面仿真」拖动探针，读取任意位置的相对温升。</p>
         </header>
       </div>
       <div class="mx-stage">
@@ -383,7 +471,13 @@ export default {
           <div class="mx-viz">
             <div class="mx-cv">
               <canvas class="mx-canvas" aria-label="皮肤截面射频加热实时模拟（原理示意）" role="img"></canvas>
-              <div class="mx-hud mx-hud--tl"><span class="mx-status" aria-live="polite">电场求解中…</span><span class="mx-sub mono">原理示意 · 非等比例<span class="mx-clock"></span></span></div>
+              <div class="mx-3d" id="mx-view-3d">
+                <div class="mx-3d__gl" role="img" aria-label="3D 皮肤组织块（原理示意）：治疗头端按压皮肤，射频电流经组织向下流向中性电极片，真皮加热、电极冷却表皮；可拖动旋转"></div>
+                <div class="mx-3d__lbls" aria-hidden="true">${LBL3.map((l) => `<span class="mx-3l mx-3l--${l.side}${l.cls ? ' ' + l.cls : ''}" data-k="${l.k}"><i></i><b>${l.zh}${l.val ? ' <em class="mono">+0.00</em>' : ''}${l.en ? `<small>${l.en}</small>` : ''}</b></span>`).join('')}</div>
+                <span class="mx-3d__tag"><i></i>原理示意 · 非等比例 · 结构简化</span>
+                <span class="mx-3d__hint" aria-hidden="true">拖动旋转</span>
+              </div>
+              <div class="mx-hud mx-hud--tl"><div class="seg mx-vsw" role="group" aria-label="视图"><button type="button" data-view="3d" aria-pressed="true" aria-controls="mx-view-3d">3D 组织块</button><button type="button" data-view="2d" aria-pressed="false">剖面仿真 (2D)</button></div><span class="mx-status" aria-live="polite">电场求解中…</span><span class="mx-sub mono">原理示意 · 非等比例<span class="mx-clock"></span></span></div>
               <div class="mx-hud mx-hud--bl"><span class="mx-flag mx-flag--nocool">原理对比：无表皮冷却 · 表皮温升明显升高</span><span class="mx-flag mx-flag--bi">原理对比示意：双极 · 电流集中于两电极间浅层</span></div>
               <div class="mx-hud mx-hud--tr">
                 <span class="mx-freq mono"><svg viewBox="0 0 40 12" aria-hidden="true"><path class="mx-freq__w" d=""/></svg>6.78 MHz ± 3%</span>
@@ -461,6 +555,7 @@ export default {
       phase: 'idle', phaseT: 0, Te: 0, step: 0, userLock: false, autoWait: 0,
       flowMode: 'osc', collagen: 0, returnGlow: 0, qAlpha: 0, equiAlpha: 1, flowAlpha: 0,
       dirty: true, scope: [], scopeDur: 0, shotCount: 0,
+      v3d: true, scrollP: null, autoTo2D: false, // 3D tab (default) · pinned scroll progress · auto-switched to 2D for 双极
     };
     const probes = [
       { x: AXIS - 13.5, y: 1.6 },
@@ -952,7 +1047,7 @@ export default {
     }
 
     function drawLabels() {
-      const labels = [[2.3, '表皮', 'EPIDERMIS'], [17, '真皮', 'DERMIS'], [53, '皮下脂肪 · 纤维隔', 'FAT · SEPTA'], [94, 'SMAS · 肌层', 'SMAS · MUSCLE']];
+      const labels = [[2.3, '表皮', 'EPIDERMIS'], [17, '真皮', 'DERMIS'], [53, '皮下脂肪 · 纤维隔', 'FAT · SEPTA'], [94, '肌肉层', 'MUSCLE']];
       g.textBaseline = 'middle'; g.textAlign = 'left';
       for (const [gy, zh, en] of labels) {
         const y = Y(gy);
@@ -1201,6 +1296,9 @@ export default {
     function setMode(m) {
       if (S.mode === m) return;
       S.mode = m;
+      // the 3D block is the monopolar device only — the bipolar comparison lives in the 2D cross-section
+      if (m === 'bi' && S.v3d) { S.autoTo2D = true; setView('2d'); }
+      else if (m === 'mono' && S.autoTo2D) { S.autoTo2D = false; setView('3d'); }
       modeBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
       root.classList.toggle('mx-is-bi', m === 'bi');
       root.querySelector('.mx-tobi') && (root.querySelector('.mx-tobi').textContent = m === 'bi' ? '← 回到单极' : '对比：双极射频 →');
@@ -1299,7 +1397,7 @@ export default {
       S.qAlpha += ((S.view.q ? (S.phase === 'idle' || S.phase === 'pre' ? 1 : 0.35) : 0) - S.qAlpha) * k;
       S.returnGlow += ((S.mode === 'mono' && (S.step === 1 || inRF) ? 1 : 0) - S.returnGlow) * k;
       // particles
-      if (f && S.flowAlpha > 0.01 && S.flowMode !== 'osc') {
+      if (f && S.flowAlpha > 0.01 && S.flowMode !== 'osc' && !S.v3d) {
         for (let p = 0; p < NP; p++) { advect(f, p, dt * (inRF || S.flowMode === 'flow' ? 1 : 0.4)); if (dead(p)) spawn(f, p); }
       }
       // auto demo
@@ -1307,7 +1405,7 @@ export default {
         S.autoWait -= dt;
         if (S.autoWait <= 0) { fire(false); S.autoWait = 1.4; }
       }
-      draw(t);
+      if (!S.v3d) draw(t);
       if (t - lastUi > 0.05) {
         lastUi = t;
         drawScope();
@@ -1342,11 +1440,12 @@ export default {
         trigger: stage, start: 'top top', end: '+=230%', pin: true, pinSpacing: true, anticipatePin: 1,
         onUpdate: (self) => {
           const p = self.progress;
+          S.scrollP = p;
           setStep(Math.min(STEPS.length - 1, Math.floor(p * STEPS.length)), 'scroll');
           progBtns.forEach((b, k) => b.style.setProperty('--f', clamp(p * STEPS.length - k)));
         },
       });
-      return () => { pinST?.kill(); pinST = null; root.classList.remove('mx-pinned'); progBtns.forEach((b) => b.style.removeProperty('--f')); requestAnimationFrame(() => layout()); };
+      return () => { pinST?.kill(); pinST = null; S.scrollP = null; root.classList.remove('mx-pinned'); progBtns.forEach((b) => b.style.removeProperty('--f')); requestAnimationFrame(() => layout()); };
     });
 
     const ro = new ResizeObserver(() => { layout(); if (reduced) render(); });
@@ -1355,8 +1454,210 @@ export default {
     // QA hook (non-enumerable, automated browsers only): lets headless screenshots fast-forward the simulation
     if (navigator.webdriver) Object.defineProperty(root, '__mx', { value: { S, sim, probes, fire, setStep, setMode, draw: (t) => draw(t), layout, advance(sec) { const n = Math.round(sec * 60); for (let k = 0; k < n; k++) { physicsStep(1 / 60); const f = field(); if (f && S.flowMode !== 'osc') for (let p = 0; p < NP; p++) { advect(f, p, 1 / 60); if (dead(p)) spawn(f, p); } } S.flowAlpha = S.phase === 'rf' || S.flowMode !== 'rf' ? 1 : 0; S.qAlpha = S.view.q ? 1 : 0; S.equiAlpha = S.view.equi ? 1 : 0; draw(performance.now() / 1000); drawScope(); } } });
 
+    /* ---------- 3D view (YM3D skincube · default tab) ---------- */
+    // Same controller as the 2D solver: S.phase (pre → rf → post), S.lv / S.pulse (heat from the solved temperature field,
+    // so power scales it and the pulse sets how long it builds), S.cool / S.Te (cryogen frost), story step → camera + presets.
+    const v3El = $('.mx-3d'), glEl = $('.mx-3d__gl');
+    const vswBtns = $$('.mx-vsw button');
+    const lbl3 = LBL3.map((l) => {
+      const el = root.querySelector(`.mx-3l[data-k="${l.k}"]`);
+      return { ...l, el, vEl: el.querySelector('em'), a: -1, tx: '', txt: '' };
+    });
+    const V3 = {
+      w: 2, h: 2, cam: { ...CAM3[0] }, px: 0, py: 0,
+      heat: 0, cool: 0, cur: 0, press: 0.62, contr: 0, heatMem: 0, fill: 0.22, pk: 0, epi: 0, field: 0,
+      dragAt: -1e9, dragStep: -1, dragged: false, sig: new Float64Array(14).fill(NaN), vals: new Float64Array(14), now: 0,
+      gov: { n: 0, acc: 0, done: false, skip: 40 },
+    };
+    const CXS = [AXIS - 16, AXIS - 12, AXIS - 8, AXIS + 8, AXIS + 12, AXIS + 16];
+    function axisStats() { // peak relative ΔT on the tip axis + epidermis (top rows) value, same columns as the 2D depth strip
+      const T = sim.T; let pk = 0, epi = 0;
+      for (let y = 0; y < NY; y++) {
+        let v = 0; for (let c = 0; c < CXS.length; c++) v += T[(y + 1) * GW + CXS[c] + 1];
+        v /= CXS.length;
+        if (v > pk) pk = v;
+        if (y < 4 && v < epi) epi = v;
+      }
+      V3.pk = pk; V3.epi = epi;
+    }
+    let m3 = null;
+    function setView(v) {
+      const on = v === '3d' && !root.classList.contains('mx-no3d');
+      if (on && S.mode === 'bi') { S.autoTo2D = false; setMode('mono'); }
+      S.v3d = on;
+      root.classList.toggle('mx-v3d', on);
+      vswBtns.forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.view === '3d') === on)));
+      V3.sig.fill(NaN); S.dirty = true;
+      if (on) m3?.invalidate();
+      if (reduced) render();
+    }
+    vswBtns.forEach((b) => b.addEventListener('click', () => { S.autoTo2D = false; setView(b.dataset.view); }));
+    new ResizeObserver((es) => { for (const e of es) { V3.w = Math.max(2, e.contentRect.width); V3.h = Math.max(2, e.contentRect.height); } V3.sig.fill(NaN); V3.gov.n = 0; V3.gov.acc = 0; }).observe(v3El);
+
+    const P3 = { t: 0, tip: 1, tipPress: 0.62, current: 0, heat: 0, cool: 0, contraction: 0, week: 0, wrinkle: 1, cutaway: 1, fibreFill: 0.22, xray: 0, explode: 0, rotate: 0, pad: 1, stainMode: 'he', highlight: 0 };
+    const camT = { ty: 0, r: 0, az: 0, el: 0 }, CK = ['ty', 'r', 'az', 'el'], VK = ['heat', 'cool', 'cur', 'contr', 'field'];
+    const _v = new THREE.Vector3();
+    function camTarget() {
+      if (S.scrollP != null && !reduced) { // pinned: the scroll position scrubs a continuous orbit through the five steps
+        const n = CAM3.length, u = clamp(S.scrollP * n - 0.5, 0, n - 1);
+        const i = Math.min(n - 2, Math.floor(u)), f = sstep(0.18, 0.82, u - i), a = CAM3[i], b = CAM3[i + 1];
+        for (const k of CK) camT[k] = a[k] + (b[k] - a[k]) * f;
+      } else Object.assign(camT, CAM3[S.step]);
+    }
+    function frame3(st, stage, t, dt, api) {
+      if (!S.v3d) return;
+      V3.now = t;
+      const snap = reduced || dt === 0 && V3.sig[0] !== V3.sig[0];
+      const k = (rate) => (snap ? 1 : 1 - Math.exp(-rate * dt));
+      // ---- targets from the shared controller ----
+      axisStats();
+      const inShot = S.phase === 'pre' || S.phase === 'rf' || S.phase === 'post';
+      const heatT = Math.pow(clamp(V3.pk / 0.8), 0.8);
+      const coolT = S.noCool ? 0 : Math.max(clamp(-S.Te / 1.25), clamp(-V3.epi * 1.4));
+      let curT = 0;
+      if (S.view.flow && S.mode === 'mono') {
+        if (S.flowMode === 'osc') curT = 0.3;                  // 01 · capacitive coupling at the electrode (+ field shells below)
+        else if (S.flowMode === 'flow') curT = 1;              // 02 · steady return path to the neutral pad
+        else curT = S.phase === 'rf' ? 1 : 0;                   // 03–05 · current only during 射频传送
+        if (reduced && S.flowMode === 'rf') curT = 0.85;       // reduced motion: the end-of-RF still
+      }
+      V3.heatMem = Math.max(heatT, V3.heatMem - dt * 0.1);
+      const contrT = S.step === 4 ? clamp(0.3 + V3.heatMem * 1.4) : clamp(V3.heatMem * 0.45) * (S.step >= 2 ? 1 : 0);
+      const damp3 = (key, to, rate) => { const dd = to - V3[key]; V3[key] = Math.abs(dd) < 2e-4 ? to : V3[key] + dd * k(rate); };
+      damp3('heat', heatT, 14);
+      damp3('cool', coolT, 8);
+      damp3('cur', curT, S.phase === 'rf' ? 14 : 6);
+      damp3('press', inShot ? 1 : 0.62, 7);
+      damp3('contr', contrT, 2.5);
+      damp3('fill', S.step === 4 ? 0.55 : 0.22, 3);
+      damp3('field', S.flowMode === 'osc' && S.mode === 'mono' && S.view.equi ? 1 : 0, 4);
+      for (const key of VK) if (V3[key] < 1e-3) V3[key] = 0;
+      P3.t = reduced ? 1.2 : t;
+      P3.tipPress = V3.press; P3.current = V3.cur; P3.heat = V3.heat; P3.cool = V3.cool;
+      P3.contraction = V3.contr; P3.fibreFill = V3.fill;
+      st.cube.update(P3);
+      // 01 · alternating field: nested equipotential shells under the electrode, a slowed outward wave (原理示意)
+      st.fieldU.uT.value = P3.t; st.fieldU.uAmp.value = V3.field; st.field.visible = V3.field > 1e-3;
+
+      // ---- camera: story keyframe (or scrubbed orbit) + drag offset + pointer parallax ----
+      camTarget();
+      const kc = k(3.2);
+      for (const key of CK) { const dd = camT[key] - V3.cam[key]; V3.cam[key] = Math.abs(dd) < 2e-4 ? camT[key] : V3.cam[key] + dd * kc; }
+      const d = api.drag;
+      if (d.active) { V3.dragAt = t; V3.dragStep = S.step; if (!V3.dragged) { V3.dragged = true; v3El.classList.add('is-dragged'); } }
+      else if ((V3.dragStep !== S.step || t - V3.dragAt > 7) && (d.azimuth || d.elevation)) { // ease back to the story view
+        const kr = k(1.4); d.azimuth -= d.azimuth * kr; d.elevation -= d.elevation * kr;
+        if (Math.abs(d.azimuth) < 1e-3 && Math.abs(d.elevation) < 1e-3) d.azimuth = d.elevation = 0;
+      }
+      const par = !reduced && api.pointer.inside && !d.active;
+      V3.px += ((par ? api.pointer.x * 0.06 : 0) - V3.px) * k(3);
+      V3.py += ((par ? -api.pointer.y * 0.035 : 0) - V3.py) * k(3);
+      if (!par && Math.abs(V3.px) < 1e-4 && Math.abs(V3.py) < 1e-4) V3.px = V3.py = 0;
+      const asp = V3.w / V3.h, fit = asp < 1.3 ? Math.pow(1.3 / asp, 0.9) : 1;
+      const cam = V3.cam;
+      const az = cam.az + d.azimuth + V3.px, el = clamp(cam.el + d.elevation + V3.py, -0.12, 1.25);
+      const ty = cam.ty - (fit - 1) * 0.45, rr = cam.r * fit;
+
+      // ---- render only when something changed (idle frames cost nothing) ----
+      const sg = V3.sig, anim = V3.cur > 0 || V3.heat > 0 || V3.cool > 0 || V3.field > 0;
+      const vals = V3.vals;
+      vals[0] = V3.press; vals[1] = V3.cur; vals[2] = V3.heat; vals[3] = V3.cool; vals[4] = V3.contr; vals[5] = V3.fill;
+      vals[6] = az; vals[7] = el; vals[8] = ty; vals[9] = rr; vals[10] = V3.w; vals[11] = V3.h; vals[12] = anim && !reduced ? t : 0; vals[13] = S.step;
+      let ch = false;
+      for (let i = 0; i < vals.length; i++) if (Math.abs(vals[i] - sg[i]) > 1e-5 || sg[i] !== sg[i]) { ch = true; sg[i] = vals[i]; }
+      if (!ch) return;
+      stage.orbit({ target: [0, ty, 0], radius: rr, azimuth: az, elevation: el });
+      stage.render();
+      place3(st, stage);
+
+      // adaptive resolution: a loop that sustains < ~33 fps while animating drops to 1× once (retina only)
+      const G = V3.gov;
+      if (!G.done && !reduced && dt > 0 && stage.renderer.getPixelRatio() > 1) {
+        if (G.skip > 0) G.skip--;
+        else { G.acc += dt; if (++G.n >= 90) { if (G.acc / G.n > 0.03) { G.done = true; stage.renderer.setPixelRatio(1); stage.setSize(Math.round(V3.w), Math.round(V3.h)); } G.n = 0; G.acc = 0; } }
+      }
+    }
+    const fmt = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2);
+    function place3(st, stage) {
+      const w = V3.w, h = V3.h, narrow = w < 560;
+      for (const l of lbl3) {
+        let a = 1;
+        switch (l.k) {
+          case 'tipTop': a = S.step <= 1 && !narrow ? 1 : 0; break;
+          case 'heatCore': a = V3.heat > 0.1 ? 1 : 0; break;
+          case 'cool': a = V3.cool > 0.1 && S.step !== 4 ? 1 : 0; break;
+          case 'pad': a = S.step === 1 || (V3.cur > 0.5 && S.step !== 4) ? 1 : 0; break;
+          case 'typeI': a = S.step === 4 ? 1 : 0; break;
+          case 'field': a = V3.field > 0.5 ? 1 : 0; break;
+          case 'subcutis': case 'smas': a = S.step === 4 ? 0 : 1; break;
+          default: a = 1;
+        }
+        if (a) a = faceVisible(l.k, stage.camera.position) ? 1 : 0; // DOM labels never show through the block when orbited
+        if (a) {
+          if (l.at) _v.set(l.at[0], l.at[1], l.at[2]).project(stage.camera); else st.cube.anchor(l.k, _v).project(stage.camera);
+          const x = (_v.x * 0.5 + 0.5) * w, y = (-_v.y * 0.5 + 0.5) * h;
+          if (!l.bw) l.bw = l.el.firstElementChild.nextElementSibling.offsetWidth || 90; // label box width, measured once
+          const room = l.side === 'l' ? x - l.bw - 26 : w - x - l.bw - 26;
+          if (_v.z > 1 || room < 4 || y < 52 || y > h - 28) a = 0;
+          else { const tx = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0)`; if (tx !== l.tx) { l.tx = tx; l.el.style.transform = tx; } }
+        }
+        if (a !== l.a) { l.a = a; l.el.classList.toggle('is-on', !!a); }
+        if (l.vEl && a) {
+          const txt = l.k === 'heatCore' ? '峰值 ' + fmt(V3.pk) : fmt(V3.epi);
+          if (txt !== l.txt) { l.txt = txt; l.vEl.textContent = txt; }
+        }
+      }
+    }
+    function build3(stage) {
+      stage.lights.key.position.set(5, 8, 6); stage.lights.key.intensity = 2.4; stage.lights.rim.intensity = 2.2;
+      stage.renderer.toneMappingExposure = 0.92;
+      // opaque backdrop (a transparent stage lets additive sprites write alpha → dark squares over the page)
+      const bgc = document.createElement('canvas'); bgc.width = 640; bgc.height = 400;
+      { const g = bgc.getContext('2d'); g.fillStyle = '#08080e'; g.fillRect(0, 0, 640, 400);
+        let gr = g.createRadialGradient(370, 235, 10, 370, 235, 330); gr.addColorStop(0, 'rgba(138,92,240,0.20)'); gr.addColorStop(1, 'rgba(138,92,240,0)'); g.fillStyle = gr; g.fillRect(0, 0, 640, 400);
+        gr = g.createRadialGradient(110, 70, 5, 110, 70, 220); gr.addColorStop(0, 'rgba(67,230,168,0.06)'); gr.addColorStop(1, 'rgba(67,230,168,0)'); g.fillStyle = gr; g.fillRect(0, 0, 640, 400); }
+      const bgt = new THREE.CanvasTexture(bgc); bgt.colorSpace = THREE.SRGBColorSpace; stage.scene.background = bgt;
+      // soft violet floor pool + contact shadow under the neutral pad
+      const fg = new THREE.CircleGeometry(16, 64), fm = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, uniforms: { uC: { value: new THREE.Color(YM.BRAND.violetDeep) } },
+        vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+        fragmentShader: 'uniform vec3 uC; varying vec2 vP; void main(){ float r = length(vP); gl_FragColor = vec4(uC * 0.6, 0.85 * exp(-r*r*0.03)); }',
+      });
+      const floor = new THREE.Mesh(fg, fm); floor.rotation.x = -Math.PI / 2; floor.position.y = -3.46; stage.scene.add(floor);
+      const sgeo = new THREE.PlaneGeometry(40, 40), smat = new THREE.ShadowMaterial({ opacity: 0.35 });
+      const sf = new THREE.Mesh(sgeo, smat); sf.rotation.x = -Math.PI / 2; sf.position.y = -3.455; sf.receiveShadow = true; stage.scene.add(sf);
+      const cube = createSkinCube(THREE, { lib: YM, seed: 7 });
+      stage.scene.add(cube.object3d);
+      // step-01 equipotential overlay: thin planes just proud of the two hero cut faces and the two notch walls
+      // (cutaway = 1 → notch = quadrant x > 0, z > 0); additive + polygon offset, depth-tested against the tissue
+      const fieldU = { uT: { value: 0 }, uAmp: { value: 0 } };
+      const fMat = new THREE.ShaderMaterial({
+        uniforms: fieldU, vertexShader: FIELD_VS, fragmentShader: FIELD_FS, transparent: true, depthWrite: false, premultipliedAlpha: true,
+        side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8,
+      });
+      const fGeos = [];
+      const field = new THREE.Group(); field.visible = false;
+      for (const [w, h, x, y, z, ry] of [[2, 2.32, -1, -1.16, 2.004, 0], [2, 2.32, 2.004, -1.16, -1, Math.PI / 2], [2, 1.3, 0.004, -0.65, 1, Math.PI / 2], [2, 1.3, 1, -0.65, 0.004, 0]]) {
+        const g = new THREE.PlaneGeometry(w, h); fGeos.push(g);
+        const m = new THREE.Mesh(g, fMat); m.position.set(x, y, z); m.rotation.y = ry; m.renderOrder = 8; field.add(m);
+      }
+      cube.object3d.add(field);
+      V3.sig.fill(NaN); V3.gov.done = false; V3.gov.n = 0; V3.gov.acc = 0; V3.gov.skip = 40;
+      return { cube, field, fieldU, junk: [fg, fm, sgeo, smat, bgt, fMat, ...fGeos] };
+    }
+    m3 = mount3D(glEl, {
+      THREE, stageLib: precompileLib(freshStageLib(YM)), dpr: 1.5, draggable: true,
+      stageOpts: { fov: 30, background: 0x08080e, exposure: 0.92 },
+      build: build3,
+      frame: frame3,
+      dispose(st) { st?.cube?.dispose(); st?.junk?.forEach((x) => x.dispose()); },
+      fallback() { root.classList.add('mx-no3d'); vswBtns[0].disabled = true; setView('2d'); },
+    });
+    if (root.__mx) Object.assign(root.__mx, { m3, setView, V3 });
+
     /* ---------- boot ---------- */
     S.spray = 0;
+    root.classList.add('mx-v3d');
     updateParams(false);
     syncViews();
     setStep(0, 'init');

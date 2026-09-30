@@ -1,6 +1,40 @@
-// HERITAGE — brand trust story (DA p.6): scroll-rolled SINCE 1995 odometer, Tsinghua gate re-drawn
-// as live line-art (edge-detected in-browser from the brochure image), abstract patent-document
-// motif, and a factual milestone timeline.
+// HERITAGE — brand trust story (DA p.6): SINCE 1995 as extruded, bevelled 3D numerals in the brand
+// gradient metal (ym3d/dataviz.mjs createDigits3D) that stand up and roll into place on slot-machine drums
+// as you scroll (pinned on desktop), with camera depth + pointer parallax, a specular glint when they land
+// and a re-roll on hover/tap; Tsinghua gate re-drawn as live line-art (edge-detected in-browser from the
+// brochure image), abstract patent-document motif, and a factual milestone timeline.
+// The CSS odometer below stays in the DOM as the layout box for the 3D numerals and as the no-WebGL fallback.
+import * as THREE from 'three';
+import * as S from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createDigits3D } from '../ym3d/dataviz.mjs';
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built well before they enter the viewport, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
+
+// host.mjs workaround (library issue): mount3D rebuilds on the SAME canvas after destroy() called
+// forceContextLoss(), so the second build fails ("WebGL unavailable", lost context) and the fallback fires.
+// Re-mount on a fresh canvas right after each far-away dispose; pointer listeners live on the container.
+function mountFresh(container, opts) {
+  const h = { m: null, get canvas() { return h.m?.canvas; }, get state() { return h.m?.state; }, invalidate() { h.m?.invalidate(); } };
+  const make = () => {
+    const m = mount3D(container, {
+      ...opts,
+      dispose(s) { opts.dispose?.(s); setTimeout(() => { if (h.m === m) { m.destroy(); make(); } }, 0); },
+    });
+    h.m = m;
+  };
+  make();
+  return h;
+}
 
 const GATE = 'assets/img/tsinghua-gate.webp';
 
@@ -84,6 +118,7 @@ export default {
 
     root.innerHTML = `
 <div class="her__stage">
+  <div class="her__3d" aria-hidden="true"></div>
   <div class="her__bg" aria-hidden="true">
     <div class="her__glow"></div>
     <canvas class="her__gate" width="1235" height="568"></canvas>
@@ -169,7 +204,11 @@ export default {
     const odo = { p: reduced ? 1 : 0 };
     const easeOut = (x) => 1 - Math.pow(1 - x, 3);
     const spin = strips.map(() => ({ v: 0 })); // extra full turn for the hover re-roll
+    const d3 = { p: reduced ? 1 : 0, spin: 1, glint: -1, out: 0, mx: 0, my: 0, tx: 0, ty: 0 };
+    let m3 = null;
     const setOdo = (p) => {
+      d3.p = p;
+      m3?.invalidate();
       strips.forEach((s, i) => {
         const a = i * 0.07;
         const x = lib.clamp((p - a) / (1 - 0.21));
@@ -181,9 +220,12 @@ export default {
     // hover / tap the year once it has landed → the drums spin one more turn and land again
     const yearEl = $('.her__year');
     let spinning = false;
+    const glint = () => { if (!reduced) gsap.fromTo(d3, { glint: 0 }, { glint: 1, duration: 1.5, ease: 'power2.inOut', overwrite: 'auto', onComplete: () => { d3.glint = -1; } }); };
     const reroll = () => {
       if (reduced || spinning || odo.p < 0.999) return;
       spinning = true;
+      // 3D drums: one extra full turn per reel (stopping left → right), then a glint sweep
+      gsap.fromTo(d3, { spin: 0 }, { spin: 1, duration: 1.8, ease: 'power2.out', onComplete: glint });
       spin.forEach((o, i) => gsap.fromTo(o, { v: 1 }, {
         v: 0, duration: 1.1 + i * 0.18, ease: 'power3.out', onUpdate: () => setOdo(odo.p),
         onComplete: () => { if (i === spin.length - 1) spinning = false; },
@@ -252,6 +294,92 @@ export default {
       tlEl.classList.toggle('is-done', p >= 0.99);
     };
 
+    /* ---------- 3D numerals (one WebGL context via mount3D; fonts first, per the YM3D host rules) ---------- */
+    const host = $('.her__3d');
+    const odoEl = $('.her__odo');
+    const FOV = 26, EL0 = 0.05, AZ0 = 0.14;
+    const fit = { r: 8, ox: 0, oy: 0, w: 0, h: 0, dirty: true };
+    const _v = new THREE.Vector3(), _sz = new THREE.Vector2();
+    let stillKey = '';
+    const ease = (x) => { x = lib.clamp(x); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+    const proj = (cam, w, h, x, y, z) => { _v.set(x, y, z).project(cam); return { x: (_v.x * 0.5 + 0.5) * w, y: (-_v.y * 0.5 + 0.5) * h }; };
+    function computeFit(stg, digits, w, h) {
+      const cam = stg.camera, hr = host.getBoundingClientRect(), dr = odoEl.getBoundingClientRect();
+      const rect = { x: dr.left - hr.left, y: dr.top - hr.top, w: dr.width, h: dr.height };
+      const W3 = digits.measure(Y);
+      cam.clearViewOffset();
+      let r = (W3 * h) / (2 * Math.max(40, rect.w) * Math.tan((FOV * Math.PI) / 360));
+      for (let k = 0; k < 3; k++) {
+        stg.orbit({ target: [0, 0.5, 0], radius: r, azimuth: AZ0, elevation: EL0, fov: FOV });
+        cam.updateMatrixWorld();
+        const a = proj(cam, w, h, -W3 / 2, 0.5, 0), b = proj(cam, w, h, W3 / 2, 0.5, 0);
+        r *= (b.x - a.x) / Math.max(40, rect.w * 0.97);
+      }
+      stg.orbit({ target: [0, 0.5, 0], radius: r, azimuth: AZ0, elevation: EL0, fov: FOV });
+      cam.updateMatrixWorld();
+      const c = proj(cam, w, h, 0, 0.5, 0);
+      Object.assign(fit, { r, ox: c.x - (rect.x + rect.w / 2), oy: c.y - (rect.y + rect.h * 0.5), w, h, dirty: false });
+    }
+    const start3D = () => {
+      m3 = mountFresh(host, {
+        THREE, stageLib: precompileLib(S), dpr: 1.5, margin: '60% 0px',
+        stageOpts: { fov: FOV, transparent: true, exposure: 1.05, envViolet: 0.8 },
+        build(stg) {
+          const { key, rim, fill } = stg.lights;
+          key.intensity = 2.3; key.position.set(3, 5, 6); key.castShadow = false;
+          rim.intensity = 2.2; rim.position.set(-5, 2, -4);
+          fill.intensity = 0.45;
+          const mint = new THREE.PointLight(S.BRAND.mint, 6, 12, 1.5); mint.position.set(-3.2, -0.6, 2.4); stg.scene.add(mint);
+          const vio = new THREE.PointLight(S.BRAND.violet, 8, 12, 1.5); vio.position.set(3.4, 1.8, 1.6); stg.scene.add(vio);
+          const digits = createDigits3D(THREE, { material: 'brand', size: 1, maxChars: 4, text: Y, spins: 1, stagger: 0.16, depth: 0.3, bevel: 0.026, castShadow: false });
+          stg.scene.add(digits.object3d);
+          root.classList.add('is-3d');
+          fit.dirty = true; stillKey = '';
+          return { digits };
+        },
+        frame(s, stg, t) {
+          stg.renderer.getSize(_sz);
+          const w = _sz.x, h = _sz.y;
+          if (fit.dirty || w !== fit.w || h !== fit.h) computeFit(stg, s.digits, w, h);
+          // parallax out: once the (un-pinned) stage scrolls away the numerals tilt back into depth
+          if (!reduced) { const r = stage.getBoundingClientRect(); d3.out = lib.clamp(-r.top / Math.max(1, r.height)); }
+          const k = reduced ? 1 : ease(d3.p);
+          if (reduced) { const key2 = `${w}x${h}|${fit.r.toFixed(3)}`; if (key2 === stillKey) return; stillKey = key2; }
+          const e = 0.06;
+          d3.mx += (d3.tx - d3.mx) * e; d3.my += (d3.ty - d3.my) * e;
+          const p = reduced ? 1 : d3.p;
+          const reveal = lib.clamp(p / 0.3), roll = lib.clamp((p - 0.05) / 0.95);
+          const landed = roll >= 1 && d3.spin >= 1;
+          const P = {
+            t, text: Y, reveal, glint: d3.glint >= 0 ? d3.glint : null, float: landed && !reduced ? 0.012 : 0,
+            rollFrom: d3.spin < 1 ? Y : '0000', roll: d3.spin < 1 ? d3.spin : roll,
+          };
+          s.digits.update(P);
+          const o = d3.out;
+          const az = lerp(0.72, AZ0, k) + d3.mx * 0.13 - o * 0.1;
+          const el = lerp(-0.26, EL0, k) - d3.my * 0.07 + o * 0.32;
+          const rad = fit.r * lerp(1.5, 1, k) * (1 + o * 0.35);
+          stg.orbit({ target: [0, 0.5, 0], radius: rad, azimuth: az, elevation: el, fov: FOV });
+          stg.camera.setViewOffset(w, h, fit.ox, fit.oy + o * h * 0.08, w, h);
+          stg.render();
+        },
+        dispose(s) { s?.digits.dispose(); },
+        fallback: () => root.classList.add('no-gl'),
+      });
+    };
+    const lerp = lib.lerp;
+    Promise.all([document.fonts?.load('600 40px Montserrat'), document.fonts?.load('500 40px Montserrat')])
+      .catch(() => {}).then(start3D);
+    lib.onResize(() => { fit.dirty = true; m3?.invalidate(); });
+    if (!reduced) {
+      stage.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        const r = stage.getBoundingClientRect();
+        d3.tx = ((e.clientX - r.left) / r.width - 0.5) * 2; d3.ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
+      });
+      stage.addEventListener('pointerleave', () => { d3.tx = d3.ty = 0; });
+    }
+
     if (reduced) {
       setOdo(1); setTL(1);
       gate.style.setProperty('--r', '1.2');
@@ -281,6 +409,7 @@ export default {
     };
     const reveal = (tl, at = 0, from = 0) => tl
       .fromTo(odo, { p: from }, { p: 1, duration: 1, ease: 'none', immediateRender: false, onUpdate: () => setOdo(odo.p) }, at)
+      .add(() => { if (!spinning) glint(); }, at + 1)
       .fromTo(gate, { '--r': 0 }, { '--r': 1.25, duration: 1.1, ease: 'power1.inOut' }, at + 0.05)
       .fromTo($('.her__uni'), { opacity: 0, y: 40, filter: 'blur(8px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.4, ease: 'power3.out' }, at + 0.62)
       .fromTo($('.her__proj'), { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, at + 0.72)

@@ -88,12 +88,7 @@
   100% { transform: translate(-50%, var(--rd)); opacity: 0; }
 }
 
-/* ---------- WebGL field ---------- */
-#hero .hero__gl {
-  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;
-  mix-blend-mode: screen; pointer-events: none;
-}
-#hero.no-gl .hero__gl { display: none; }
+/* ---------- veil (under the WebGL layer: darkens the corridor edges) ---------- */
 #hero .hero__veil {
   position: absolute; inset: 0; z-index: 2; pointer-events: none;
   background:
@@ -105,38 +100,23 @@
   background: radial-gradient(circle at 50% 42%, rgba(138, 92, 240, 0.22), transparent 38%);
 }
 
-/* ---------- device ---------- */
+/* ---------- WebGL: RF field + 3D console (one canvas, mount3D) ---------- */
+#hero .hero__3d { position: absolute; inset: 0; z-index: 3; }
+#hero .hero__3d canvas { outline: none; }
+#hero.no-gl .hero__3d { display: none; }
+
+/* layout box for the console (the 3D camera is fitted to it) + no-WebGL fallback image */
 #hero .hero__device {
-  --dh: clamp(340px, calc(100svh - 320px), 700px);
-  position: absolute; z-index: 3; margin: 0; left: 50%; bottom: 5vh;
+  --dh: clamp(340px, calc(100svh - 300px), 720px);
+  position: absolute; z-index: 3; margin: 0; left: 50%; bottom: 4.5vh;
   height: var(--dh); aspect-ratio: 496 / 1186; transform: translateX(-50%);
+  visibility: hidden; pointer-events: none;
 }
-#hero .hero__float { position: relative; width: 100%; height: 100%; will-change: transform; }
 #hero .hero__img {
   width: 100%; height: 100%; object-fit: contain;
   filter: drop-shadow(0 26px 34px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 40px rgba(138, 92, 240, 0.16));
 }
-#hero .hero__sheen {
-  position: absolute; inset: 0; pointer-events: none;
-  -webkit-mask: url("../../assets/img/device.webp") center / 100% 100% no-repeat;
-  mask: url("../../assets/img/device.webp") center / 100% 100% no-repeat;
-  background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.5) 49%, rgba(190, 170, 255, 0.28) 53%, transparent 62%);
-  background-size: 300% 100%; background-position: 130% 0; background-repeat: no-repeat;
-  mix-blend-mode: soft-light;
-}
-#hero .hero__halo {
-  position: absolute; left: 50%; bottom: -4.5%; width: 290%; height: 15%;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, rgba(160, 120, 255, 0.7) 0%, rgba(138, 92, 240, 0.3) 32%, rgba(67, 230, 168, 0.06) 55%, transparent 70%);
-  filter: blur(6px); pointer-events: none;
-}
-#hero .hero__refl {
-  position: absolute; left: 0; top: 100%; width: 100%; height: 30%; overflow: hidden; pointer-events: none;
-  opacity: 0.26;
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.35) 40%, transparent 85%);
-  mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.35) 40%, transparent 85%);
-}
-#hero .hero__refl img { position: absolute; left: 0; top: 0; width: 100%; height: var(--dh); transform: scaleY(-1); filter: blur(1.5px); }
+#hero.no-gl .hero__device { visibility: visible; }
 
 /* ---------- copy ---------- */
 #hero .hero__top { position: absolute; z-index: 4; top: clamp(84px, 12vh, 128px); left: 0; right: 0; text-align: center; pointer-events: none; }
@@ -235,7 +215,7 @@
 /* ---------- ≤1023: stacked layout (first viewport = mark + device + tagline) ---------- */
 @media (max-width: 1023px) {
   #hero .hero__stage { height: auto; min-height: 0; padding-bottom: 48px; }
-  #hero .hero__room, #hero .hero__gl, #hero .hero__veil { bottom: auto; height: 100vh; height: 100svh; min-height: 620px; }
+  #hero .hero__room, #hero .hero__3d, #hero .hero__veil { bottom: auto; height: 100vh; height: 100svh; min-height: 620px; }
   #hero .hero__veil {
     background:
       linear-gradient(180deg, rgba(7, 7, 12, 0.8) 0%, rgba(7, 7, 12, 0.15) 26%, transparent 42%, transparent 66%, rgba(7, 7, 12, 0.85) 90%, #07070c 100%),
@@ -244,7 +224,6 @@
   #hero .hero__top { top: 92px; }
   #hero .hero__device { --dh: clamp(250px, calc(100svh - 430px), 520px); bottom: auto; top: calc(max(100svh, 620px) - 232px - var(--dh)); }
   #hero .hero__cue { display: none; }
-  #hero .hero__refl { height: 22%; }
   #hero .hero__left {
     position: relative; left: auto; top: auto; width: auto; transform: none;
     margin-top: calc(max(100svh, 620px) - 196px); padding: 0 var(--gutter); text-align: center;

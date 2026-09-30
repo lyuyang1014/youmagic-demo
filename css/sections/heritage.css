@@ -77,6 +77,12 @@
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 #heritage .her__s span { display: block; height: 1em; line-height: 1; text-align: center; }
+/* 3D numerals (mount3D canvas over the whole stage; the CSS odometer stays as layout box / no-WebGL fallback) */
+#heritage .her__3d { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+#heritage .her__3d canvas { pointer-events: none; }
+#heritage.is-3d .her__s { opacity: 0; }
+#heritage.no-gl .her__3d { display: none; }
+#heritage.no-gl .her__s { opacity: 1; }
 #heritage .her__uni { margin: clamp(10px, 2vh, 22px) 0 0; font-weight: 700; font-size: clamp(28px, 3.3vw, 48px); letter-spacing: 0.08em; line-height: 1.2; }
 #heritage .her__proj { margin: 8px 0 0; font-weight: 300; font-size: clamp(19px, 2.2vw, 32px); letter-spacing: 0.06em; color: var(--text); }
 #heritage .her__motto {

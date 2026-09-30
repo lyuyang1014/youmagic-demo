@@ -4,6 +4,8 @@
 //      IFU p.15 §7.6（准备就绪 → 预备 → 启动三阶段 → 完成；界面文案）· IFU p.19–21（默认参数 2 / 1 / 1.0；接触压力过低停止输出）
 //      IFU p.31 §14（能量输出表）· DA p.2（可视化能量密度、多重制冷调节 原文）
 // Cooling-phase durations and pressure thresholds below are schematic (not specified in the IFU).
+// 3D (YM3D): the console (createDevice) mirrors the virtual touchscreen on its own screen; the IFU energy table is a
+// createEnergyMatrix3D bar field (click a bar → load). Both views share ONE WebGL context (sticky layer + scissor).
 
 const PRE = 0.45, POST = 0.6; // schematic 治疗前 / 治疗后冷却 durations (s)
 const P_TOUCH = 8, P_LO = 40, P_HI = 76; // schematic contact-pressure zones (0–100)
@@ -13,7 +15,55 @@ const SETTINGS = {
   tip: [['名称', 'YM5-TP4-900'], ['发数', '900'], ['治疗面积', '4.0 cm²']],
 };
 
+import * as THREE from 'three';
+import * as S3 from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createDevice } from '../ym3d/device.mjs';
+import { createEnergyMatrix3D, projectAnchor } from '../ym3d/dataviz.mjs';
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built well before they enter the viewport, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
+
+/* host.mjs work-around (library issue, reported by integration QA): when a mount goes far off-screen the host calls
+   renderer.forceContextLoss() and on the way back rebuilds on the SAME canvas, whose context is still lost → createStage
+   throws ("reading 'precision'") and the fallback fires for good. Each build therefore renders into a fresh sibling canvas
+   under the host's own canvas, which stays on top (context-less, transparent) as the pointer / drag layer. */
+const freshStageLib = (YM) => ({
+  ...YM,
+  createStage(THREE_, canvas, opts) {
+    canvas.__ymRC?.remove();
+    const c = document.createElement('canvas');
+    c.className = 'ym3d-rc';
+    c.setAttribute('aria-hidden', 'true');
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;';
+    canvas.parentNode.insertBefore(c, canvas);
+    canvas.__ymRC = c;
+    return YM.createStage(THREE_, c, opts);
+  },
+});
+
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+let _fonts = null;
+const fontsReady = () => (_fonts ||= Promise.all(['600 40px Montserrat', '500 40px Montserrat'].map((f) => document.fonts?.load(f))).catch(() => {}));
+/** YM3D fx/halo materials use AdditiveBlending with alpha = 1, which also ADDS alpha: on a transparent canvas every
+    glow quad becomes an opaque dark square. Re-map them to add colour only (alpha untouched). */
+function additiveKeepsAlpha(THREE, root) {
+  root.traverse((o) => {
+    for (const m of [].concat(o.material || [])) {
+      if (m.blending !== THREE.AdditiveBlending) continue;
+      Object.assign(m, { blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor, blendEquationAlpha: THREE.AddEquation, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor });
+      m.needsUpdate = true;
+    }
+  });
+}
 
 export default {
   id: 'console',
@@ -45,6 +95,7 @@ export default {
       </div>`).join('');
 
     root.innerHTML = `
+    <div class="cs-3dl" aria-hidden="true"></div>
     <div class="wrap">
       <header class="sec-head">
         <span class="eyebrow">06 · INTERFACE</span>
@@ -54,6 +105,16 @@ export default {
 
       <div class="cs-grid">
         <div class="cs-left">
+          <div class="cs-dev3d" role="img" aria-label="YM5 主机三维模型：触摸屏实时镜像右侧操控面板的状态与参数（准备就绪、预备、输出中、完成）">
+            <div class="cs-v3d__lbls" aria-hidden="true">
+              <span class="cs-lb cs-lb--scr" data-a="screen"><i></i>触摸屏 · 实时镜像</span>
+              <span class="cs-lb cs-lb--en" data-a="enable">使能按钮 · 按住</span>
+            </div>
+            <div class="cs-dev3d__cap"><span class="chip cs-dev3d__chip">YM5-G1 主机 · 三维示意</span><span class="chip cs-dev3d__hint">拖动旋转</span></div>
+          </div>
+        </div>
+
+        <div class="cs-right">
           <div class="cs-device" data-reveal>
             <div class="cs-bezel">
               <div class="cs-scr" aria-label="YM5 触摸屏（交互复刻）">
@@ -152,15 +213,29 @@ export default {
             </div>
           </div>
           <p class="cs-hint small"><span class="num">01</span> 在“接触皮肤”垫上向下拖动，让压力进入绿色区间　<span class="num">02</span> 按住“使能”（键盘：聚焦后按住空格）　<span class="num">03</span> 观察治疗前冷却 → 射频传送 → 治疗后冷却</p>
-        </div>
 
-        <div class="cs-right">
           <div class="cs-mx card" data-reveal>
             <div class="cs-mx__hd">
               <div><span class="eyebrow">ENERGY MATRIX</span><h3 class="h3">能量输出表 <small>能量密度 J/cm²</small></h3></div>
               <span class="tag-src">使用说明书 第 31 页</span>
             </div>
-            <p class="small cs-mx__lead">功率 W × 脉冲时间 s ÷ 4.0 cm² = 能量密度。点击任一格即载入操控台，当前设置在表中实时高亮。</p>
+            <p class="small cs-mx__lead">功率 W × 脉冲时间 s ÷ 4.0 cm² = 能量密度，柱高即能量密度。点击任一立柱即载入操控台，当前设置实时高亮；拖动可旋转。</p>
+            <div class="cs-mx3d" tabindex="0" role="group" aria-label="三维能量输出表：柱高为能量密度。方向键移动光标（上下为功率档位，左右为脉冲时间），回车载入操控台">
+              <div class="cs-v3d__lbls" aria-hidden="true">
+                <span class="cs-lb cs-lb--hl" data-a="highlight"></span>
+                <span class="cs-lb cs-lb--zone" data-a="zone">推荐区 · 中 / 较高</span>
+                <span class="cs-lb cs-lb--lock" data-a="locked">限制输出区 · 表内空白</span>
+              </div>
+              <div class="cs-mx3d__tt" hidden></div>
+              <span class="cs-sr cs-mx3d__sr" aria-live="polite"></span>
+            </div>
+            <div class="legend cs-mx__lg cs-mx__lg--3d">
+              ${BANDS.map((b) => `<span><i style="background:${b.color}"></i>${b.label} ${b.min}–${b.max}</span>`).join('')}
+              <span><i class="cs-lg-blank"></i>限制输出</span>
+              <span><i class="cs-lg-zone"></i>推荐区（中、较高）</span>
+            </div>
+            <details class="cs-mx__det">
+              <summary><span>数值表 · 能量输出表原表</span><small>可键盘操作 · 使用说明书 第 31 页</small></summary>
             <div class="cs-mx__wrap">
               <div class="cs-mx__grid" role="grid" aria-label="能量输出表：功率档位 × 脉冲时间 → 能量密度（J/cm²）；方向键移动，回车载入">
                 <div class="cs-mx__row cs-mx__row--hd" role="row">
@@ -172,11 +247,7 @@ export default {
               <svg class="cs-mx__zone" aria-hidden="true"><path class="cs-mx__zg"/><path class="cs-mx__zp"/></svg>
               <div class="cs-mx__tt" role="tooltip" hidden></div>
             </div>
-            <div class="legend cs-mx__lg">
-              ${BANDS.map((b) => `<span><i style="background:${b.color}"></i>${b.label} ${b.min}–${b.max}</span>`).join('')}
-              <span><i class="cs-lg-blank"></i>限制输出</span>
-              <span><i class="cs-lg-zone"></i>推荐区（中、较高）</span>
-            </div>
+            </details>
             <div class="cs-cm" aria-live="polite">
               <div class="cs-cm__hd"><span>能量水平与制冷强度匹配</span><span class="cs-cm__cols"><i>1</i><i>2</i><i>3</i><i>4</i></span></div>
               ${BANDS.map((b) => `
@@ -189,7 +260,7 @@ export default {
           </div>
         </div>
       </div>
-      <p class="disclaimer cs-disc">界面为依据使用说明书图示的交互复刻示意：冷却阶段时长、接触压力阈值与阻值读数为演示设定（阻值取额定负载 100–250 Ω 范围内的示意值），射频中断时的计数方式为演示处理；实际操作以设备与使用说明书为准。推荐参数：能量水平位于“中、较高”区域，制冷强度选用默认档位（使用说明书 第 21 页）。</p>
+      <p class="disclaimer cs-disc">界面为依据使用说明书图示的交互复刻示意：冷却阶段时长、接触压力阈值与阻值读数为演示设定（阻值取额定负载 100–250 Ω 范围内的示意值），射频中断时的计数方式为演示处理；三维主机为示意模型。实际操作以设备与使用说明书为准。推荐参数：能量水平位于“中、较高”区域，制冷强度选用默认档位（使用说明书 第 21 页）。</p>
     </div>`;
 
     /* ================= state ================= */
@@ -651,6 +722,275 @@ export default {
         if (root.dataset.cued) return; root.dataset.cued = '1';
         gsap.fromTo([pad, enBtn], { boxShadow: '0 0 0 0 rgba(67,230,168,0.6)' }, { boxShadow: '0 0 0 14px rgba(67,230,168,0)', duration: 1.2, repeat: 2, stagger: 0.3, ease: 'power2.out', clearProps: 'boxShadow' });
       }, null, '-25% 0px');
+    }
+
+    /* ================= 3D (YM3D) — one WebGL context, two views =================
+       A sticky, viewport-sized transparent canvas (.cs-3dl) sits behind the content. Each frame the 3D console
+       (.cs-dev3d, createDevice) and the 3D energy matrix (.cs-mx3d, createEnergyMatrix3D) are rendered into their
+       on-screen rectangles via viewport + scissor, so the section never holds more than one WebGL context.
+       The virtual touchscreen state S / seq drives the 3D screen (screenValues + status), the holstered
+       handpiece (enable / keys / RF glow / cooling) and the matrix highlight; clicks on the 3D bars call load(). */
+    {
+      const reduced3 = !!ctx.reduced;
+      const layer = q('.cs-3dl'), mxTT = q('.cs-mx3d__tt'), mxSR = q('.cs-mx3d__sr');
+      const KEYS = { R: 'R', M: 'M', '-': 'minus', '+': 'plus' };
+      const press = { k: null, at: -1e9 };
+      qa('.cs-hk').forEach((b) => b.addEventListener('click', () => { press.k = KEYS[b.dataset.hk]; press.at = performance.now(); }));
+      const mkView = (el) => ({
+        el, on: false, x: 0, y: 0, w: 0, h: 0, top: 0, px: 0, py: 0,
+        drag: { az: 0, el: 0, active: false, moved: 0, lx: 0, ly: 0 }, ptr: { x: 0, y: 0, in: false },
+        lbls: [...el.querySelectorAll('.cs-lb')].map((n) => ({ el: n, a: n.dataset.a, out: {}, on: false })),
+      });
+      const VD = mkView(q('.cs-dev3d')), VM = mkView(q('.cs-mx3d'));
+      let st3 = null, sig = '', hover = null, kc = null, mxRev = reduced3 ? 1 : 0, mxStarted = reduced3, en = 0, glow = 0, cold = 0;
+      const _v = new THREE.Vector3(), _ndc = new THREE.Vector2(), ray = new THREE.Raycaster(), _hit = new THREE.Vector3();
+
+      /* drag-to-orbit (+ click) on a view; the canvas is behind the DOM, so the placeholders take the pointer */
+      function bindView(v, onClick, onHover) {
+        const el = v.el;
+        el.addEventListener('pointermove', (e) => {
+          const r = el.getBoundingClientRect();
+          v.ptr.x = ((e.clientX - r.left) / r.width) * 2 - 1; v.ptr.y = -(((e.clientY - r.top) / r.height) * 2 - 1); v.ptr.in = true;
+          if (v.drag.active) {
+            const dx = e.clientX - v.drag.lx, dy = e.clientY - v.drag.ly; v.drag.lx = e.clientX; v.drag.ly = e.clientY;
+            v.drag.moved += Math.abs(dx) + Math.abs(dy);
+            if (v.drag.moved > 6) { v.drag.az = clamp(v.drag.az - dx * 0.0045, -1.2, 1.2); v.drag.el = clamp(v.drag.el + dy * 0.0035, -0.45, 0.8); onHover?.(null); }
+          } else onHover?.(e, r);
+        });
+        el.addEventListener('pointerleave', () => { v.ptr.in = false; if (!v.drag.active) onHover?.(null); });
+        el.addEventListener('pointerdown', (e) => {
+          if (e.button !== 0) return;
+          Object.assign(v.drag, { active: true, moved: 0, lx: e.clientX, ly: e.clientY });
+          try { el.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ }
+          el.classList.add('is-grab');
+        });
+        const up = (e) => {
+          if (!v.drag.active) return;
+          v.drag.active = false; el.classList.remove('is-grab');
+          if (v.drag.moved <= 6 && e.type === 'pointerup') onClick?.(e);
+        };
+        el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+      }
+
+      /* ---- matrix: picking, tooltip, keyboard cursor ---- */
+      const tipHTML = (lv, p) => {
+        if (lib.isAllowed(lv, p)) {
+          const d = lib.density(lv, p), b = lib.bandOf(d);
+          return `<b>${lib.levelPower(lv)} W × ${p.toFixed(1)} s ÷ 4.0 cm² = <em style="color:${b.hex}">${d.toFixed(1)}</em> J/cm²</b><span>功率档位 ${lv.toFixed(1)} · 能量水平“${b.label}” · 默认制冷 ${b.coolDefault}</span>`;
+        }
+        return `<b>限制输出区</b><span>${lv.toFixed(1)} 档 × ${p.toFixed(1)} s 在能量输出表中为空白，该组合不可选择</span>`;
+      };
+      let ttKey = '', ttMsgT = 0;
+      function showTT(html, x, y, key) {
+        if (key !== ttKey) { mxTT.innerHTML = html; ttKey = key; }
+        mxTT.hidden = false;
+        const w = mxTT.offsetWidth, h = mxTT.offsetHeight;
+        const tx = clamp(x - w / 2, 4, VM.w - w - 4), ty = y - h - 16 < 4 ? y + 18 : y - h - 16;
+        mxTT.style.transform = `translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px)`;
+      }
+      const hideTT = () => { if (Date.now() < ttMsgT) return; mxTT.hidden = true; ttKey = ''; };
+      function pick(e, r) {
+        if (!st3 || !mxStarted) return null;
+        _ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
+        ray.setFromCamera(_ndc, st3.camM);
+        let best = null, bd = Infinity;
+        for (const b of st3.boxes) { if (ray.ray.intersectBox(b.box, _hit)) { const d = _hit.distanceToSquared(ray.ray.origin); if (d < bd) { bd = d; best = b.c; } } }
+        return best;
+      }
+      bindView(VM, (e) => {
+        const c = pick(e, VM.el.getBoundingClientRect());
+        if (!c) return;
+        kc = null;
+        if (S.mode !== 'ready') { showTT('<b>请在“准备就绪”状态下调节参数</b><span>松开使能按钮、等待本发完成后再选择</span>', hover?.x ?? VM.w / 2, hover?.y ?? VM.h / 2, 'busy'); ttMsgT = Date.now() + 1600; return; }
+        load(c.lv, c.p, 'mx');
+        if (!c.allowed) { showTT(tipHTML(c.lv, c.p), e.clientX - VM.el.getBoundingClientRect().left, e.clientY - VM.el.getBoundingClientRect().top, 'deny' + c.lv + c.p); ttMsgT = Date.now() + 1400; }
+      }, (e, r) => {
+        if (!e) { hover = null; hideTT(); VM.el.style.cursor = ''; return; }
+        const c = pick(e, r);
+        if (!c) { hover = null; hideTT(); VM.el.style.cursor = ''; return; }
+        hover = { c, x: e.clientX - r.left, y: e.clientY - r.top };
+        VM.el.style.cursor = c.allowed ? 'pointer' : 'not-allowed';
+        if (e.pointerType === 'mouse') showTT(tipHTML(c.lv, c.p), hover.x, hover.y, `${c.lv}|${c.p}`);
+      });
+      VM.el.addEventListener('keydown', (e) => {
+        const m = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+        if (!kc) kc = { i: LEVELS.indexOf(S.lv), j: PULSES.indexOf(S.p) };
+        if (m) { e.preventDefault(); kc.i = clamp(kc.i + m[0], 0, 15); kc.j = clamp(kc.j + m[1], 0, 8); }
+        else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); load(LEVELS[kc.i], PULSES[kc.j], 'mx'); return; }
+        else if (e.key === 'Escape') { kc = null; hideTT(); return; }
+        else return;
+        const lv = LEVELS[kc.i], p = PULSES[kc.j];
+        mxSR.textContent = lib.isAllowed(lv, p) ? `功率档位 ${lv.toFixed(1)}，脉冲时间 ${p.toFixed(1)} 秒，能量密度 ${lib.density(lv, p).toFixed(1)}，${lib.bandOf(lib.density(lv, p)).label}；回车载入` : `功率档位 ${lv.toFixed(1)}，脉冲时间 ${p.toFixed(1)} 秒，限制输出区`;
+      });
+      VM.el.addEventListener('blur', () => { kc = null; hideTT(); });
+      bindView(VD, null, null);
+
+      /* ---- device: UI state → screenValues / status / handpiece ---- */
+      const sv = { level: 2, cooling: 1, pulse: 1, shots: 900, shotsTotal: 900, energyKJ: 0, ohm: '—', status: 'ready', selected: null };
+      const devP = { t: 0, screen: 'treatment', screenValues: sv, rimGlow: 0.6, enablePressed: 0, electrodeGlow: 0, cooling: 0, buttonPress: null, buttonPressAmount: 1, tipInsert: 1 };
+      const STATUS = { ready: 'ready', armed: 'standby', fire: 'firing', done: 'done', empty: 'done' };
+      const SEL = { lv: 'level', cool: 'cooling', p: 'pulse' };
+      function devParams(t, dt) {
+        Object.assign(sv, { level: S.lv, cooling: S.cool, pulse: S.p, shots: S.shots, energyKJ: +S.kj.toFixed(2), ohm: S.ohm == null ? '—' : S.ohm, status: STATUS[S.mode] || 'ready', selected: SEL[S.sel] || null });
+        devP.screen = S.mode === 'empty' ? 'activate' : 'treatment';
+        devP.t = reduced3 ? 0 : t;
+        const k = reduced3 ? 1 : 1 - Math.exp(-dt * 14);
+        en += ((S.held ? 1 : 0) - en) * k;
+        const now = performance.now();
+        const rfOn = seq.phase === 'rf' && !seq.interrupted, coolOn = seq.phase === 'pre' || seq.phase === 'post';
+        const sub = rfOn ? (((now - seq.tRF) / 1000) % 0.1) / 0.1 : 0; // 100 ms sub-pulses
+        glow += ((rfOn ? (sub < 0.86 ? 0.75 : 0.3) : 0) - glow) * (reduced3 ? 1 : 1 - Math.exp(-dt * 30));
+        cold += ((coolOn ? 0.9 : 0) - cold) * k;
+        const since = now - press.at;
+        Object.assign(devP, {
+          enablePressed: en, electrodeGlow: glow, cooling: cold,
+          rimGlow: S.mode === 'fire' ? 0.82 + (reduced3 ? 0 : 0.14 * Math.sin(t * 9)) : 0.6,
+          buttonPress: since < 280 ? press.k : null, buttonPressAmount: since < 280 ? Math.sin(Math.PI * since / 280) : 0,
+        });
+      }
+
+      /* ---- cameras ---- */
+      const orbit = (cam, o, az = 0, el = 0, rk = 1) => {
+        const a = o.azimuth + az, e = o.elevation + el, r = o.radius * rk, [tx, ty, tz] = o.target;
+        cam.position.set(tx + r * Math.cos(e) * Math.sin(a), ty + r * Math.sin(e), tz + r * Math.cos(e) * Math.cos(a));
+        cam.up.set(0, 1, 0); cam.lookAt(tx, ty, tz);
+      };
+      const mixO = (a, b, k, o) => { for (let i = 0; i < 3; i++) o.target[i] = a.target[i] + (b.target[i] - a.target[i]) * k; o.radius = a.radius + (b.radius - a.radius) * k; o.azimuth = a.azimuth + (b.azimuth - a.azimuth) * k; o.elevation = a.elevation + (b.elevation - a.elevation) * k; return o; };
+      const DW = { target: [0, 0.66, 0.02], radius: 3.8, azimuth: -0.62, elevation: 0.14 };
+      const DC = { target: [-0.02, 1.0, 0.2], radius: 1.3, azimuth: -0.2, elevation: 0.06 };
+      const MXI = { target: [0.05, 0.1, 0.1], radius: 9.6, azimuth: -0.25, elevation: 1.05 };
+      const oD = { target: [0, 0, 0] }, oM = { target: [0, 0, 0] };
+      const setAspect = (cam, w, h) => { const a = w / h; if (Math.abs(cam.aspect - a) > 1e-4) { cam.aspect = a; cam.updateProjectionMatrix(); } };
+      const parallax = (v, dt) => {
+        const k = 1 - Math.exp(-dt * 3);
+        v.px += ((v.ptr.in && !v.drag.active ? v.ptr.x : 0) - v.px) * k; v.py += ((v.ptr.in && !v.drag.active ? v.ptr.y : 0) - v.py) * k;
+        if (!v.drag.active && !reduced3) { const d = Math.exp(-dt * 0.9); v.drag.az *= d; v.drag.el *= d; }
+      };
+
+      function place(v, l, o, on, ax = -0.5, ay = -1, dx = 0, dy = -12) {
+        const vis = on && o.visible && o.x > 6 && o.x < v.w - 6 && o.y > 6 && o.y < v.h - 6;
+        if (vis !== l.on) { l.on = vis; l.el.classList.toggle('is-on', vis); }
+        if (vis) l.el.style.transform = `translate3d(${(o.x + dx).toFixed(1)}px, ${(o.y + dy).toFixed(1)}px, 0) translate(${ax * 100}%, ${ay * 100}%)`;
+      }
+      let hlTxt = '';
+
+      function drawDevice(s, stage, t, dt) {
+        const { renderer, camera } = stage;
+        parallax(VD, dt);
+        devParams(t, dt);
+        s.dev.update(devP);
+        const vh = window.innerHeight;
+        const k = reduced3 ? 1 : S3.ease.inOut(clamp((vh * 0.92 - VD.top) / (vh * 0.62), 0, 1));
+        mixO(DW, DC, k, oD);
+        const asp = VD.w / VD.h, fit = Math.max(1, Math.pow(0.7 / asp, 0.85));
+        setAspect(camera, VD.w, VD.h);
+        orbit(camera, oD, VD.drag.az + VD.px * 0.09 + (reduced3 ? 0 : 0.035 * Math.sin(t * 0.23)), VD.drag.el * 0.7 - VD.py * 0.04, 1 + (fit - 1) * k);
+        renderer.render(stage.scene, camera);
+        // labels: screen chip + enable (while held)
+        for (const l of VD.lbls) {
+          s.dev.anchor(l.a, _v);
+          if (l.a === 'screen') _v.y += 0.105;
+          const o = projectAnchor(THREE, _v, camera, VD.w, VD.h, l.out);
+          if (l.a === 'screen') place(VD, l, o, k > 0.85);
+          else place(VD, l, o, S.held && k > 0.85, -1, -0.5, -18, 0);
+        }
+      }
+
+      function drawMatrix(s, stage, t, dt) {
+        const { renderer } = stage;
+        if (!mxStarted && VM.top < window.innerHeight * 0.86) mxStarted = true;
+        s.mx.object3d.visible = mxStarted;
+        if (mxStarted && mxRev < 1) mxRev = Math.min(1, mxRev + dt / 2.4);
+        parallax(VM, dt);
+        const rv = S3.ease.inOut(mxRev);
+        const hc = kc ? { lv: LEVELS[kc.i], p: PULSES[kc.j] } : null;
+        s.mx.update({ t: reduced3 ? 0 : t, reveal: rv, highlight: { lv: S.lv, p: S.p }, pulseHighlight: reduced3 ? 0 : 0.7, focus: 0.45, zone: 1, values: 0, labels: 1 });
+        const base = s.mx.view, asp = VM.w / VM.h, fit = Math.max(0.94, Math.pow(1.5 / asp, 0.55));
+        mixO(MXI, base, S3.ease.out(clamp(mxRev * 1.15, 0, 1)), oM);
+        setAspect(s.camM, VM.w, VM.h);
+        orbit(s.camM, oM, VM.drag.az + VM.px * 0.07, VM.drag.el * 0.7 - VM.py * 0.03, fit);
+        renderer.render(s.sceneM, s.camM);
+        // labels
+        const d = lib.density(S.lv, S.p), b = lib.bandOf(d);
+        const small = VM.w < 480;
+        const txt = small ? `${S.lv.toFixed(1)} × ${S.p.toFixed(1)} s · <b style="color:${b.hex}">${d.toFixed(1)}</b> · ${b.label}` : `${S.lv.toFixed(1)} 档 × ${S.p.toFixed(1)} s · <b style="color:${b.hex}">${d.toFixed(1)}</b> J/cm² · ${b.label}`;
+        for (const l of VM.lbls) {
+          if (l.a === 'highlight' && txt !== hlTxt) { hlTxt = txt; l.el.innerHTML = `<i style="background:${b.hex}"></i>${small ? '' : '当前 '}${txt}`; }
+          const o = projectAnchor(THREE, s.mx.anchors[l.a], s.camM, VM.w, VM.h, l.out);
+          const on = rv > 0.98 && (l.a === 'highlight' || (!small && !hover && !kc));
+          place(VM, l, o, on, -0.5, -1, 0, l.a === 'highlight' ? -10 : -4);
+        }
+        // keyboard cursor tooltip
+        if (hc) {
+          s.mx.cellTop(hc.lv, hc.p, _v); _v.y += 0.05;
+          const o = projectAnchor(THREE, _v, s.camM, VM.w, VM.h, {});
+          showTT(tipHTML(hc.lv, hc.p) + '<span class="cs-mx3d__k">回车载入 · Esc 取消</span>', o.x, o.y, `k${hc.lv}|${hc.p}`);
+        }
+      }
+
+      let wasAny = true;
+      function frame3(s, stage, t, dt) {
+        st3 = s;
+        const lr = layer.getBoundingClientRect(), W = lr.width, H = lr.height;
+        let rs = '';
+        for (const v of [VD, VM]) {
+          const r = v.el.getBoundingClientRect();
+          v.x = r.left - lr.left; v.y = r.top - lr.top; v.w = r.width; v.h = r.height; v.top = r.top;
+          v.on = v.w > 4 && v.h > 4 && v.x < W && v.x + v.w > 0 && v.y < H && v.y + v.h > 0;
+          rs += `${v.on ? 1 : 0}${Math.round(v.x)},${Math.round(v.y)},${Math.round(v.w)},${Math.round(v.h)};`;
+        }
+        const any = VD.on || VM.on;
+        if (reduced3) { // single still per state: redraw only when the UI state or the view rectangles change
+          const ns = `${rs}|${S.lv}|${S.cool}|${S.p}|${S.shots}|${S.kj}|${S.ohm}|${S.mode}|${S.sel}|${S.held}|${seq.phase}|${kc && kc.i + ',' + kc.j}|${VD.drag.az.toFixed(3)},${VD.drag.el.toFixed(3)},${VM.drag.az.toFixed(3)},${VM.drag.el.toFixed(3)}|${mxStarted}`;
+          if (ns === sig) return; sig = ns;
+        }
+        if (!any && !wasAny) return;
+        wasAny = any;
+        const { renderer } = stage;
+        renderer.setScissorTest(false); renderer.clear();
+        for (const [v, draw] of [[VD, drawDevice], [VM, drawMatrix]]) {
+          if (!v.on) continue;
+          const gy = H - (v.y + v.h);
+          renderer.setViewport(v.x, gy, v.w, v.h); renderer.setScissor(v.x, gy, v.w, v.h); renderer.setScissorTest(true);
+          draw(s, stage, t, dt);
+        }
+        renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+      }
+
+      fontsReady().then(() => mount3D(layer, {
+        THREE, stageLib: precompileLib(freshStageLib(S3)), dpr: 1.5, margin: '25% 0px', farMargin: '120% 0px',
+        stageOpts: { fov: 30, transparent: true, exposure: 1.0 },
+        build(stage) {
+          const dev = createDevice(THREE, { screenRes: 1280, internals: false, back: false });
+          additiveKeepsAlpha(THREE, dev.object3d);
+          stage.scene.add(dev.object3d);
+          const kl = stage.lights.key;
+          kl.position.set(2.2, 4.2, 3.2); kl.target.position.set(0, 0.8, 0); stage.scene.add(kl.target);
+          Object.assign(kl.shadow.camera, { left: -1.2, right: 1.2, top: 1.8, bottom: -0.6 }); kl.shadow.camera.updateProjectionMatrix();
+          stage.lights.rim.intensity = 1.1;
+          // matrix scene (own lights, shared PMREM environment)
+          const sceneM = new THREE.Scene(); sceneM.environment = stage.env;
+          const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(4, 6, 5); key.castShadow = true;
+          key.shadow.mapSize.set(1024, 1024); key.shadow.bias = -0.0004; Object.assign(key.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 0.5, far: 30 });
+          const rim = new THREE.DirectionalLight(S3.BRAND.violet, 1.6); rim.position.set(-5, 3, -4);
+          const fill = new THREE.HemisphereLight(0xdfe6ff, 0x140c24, 0.35);
+          sceneM.add(key, rim, fill);
+          const mx = createEnergyMatrix3D(THREE, {});
+          additiveKeepsAlpha(THREE, mx.object3d);
+          sceneM.add(mx.object3d);
+          const camM = new THREE.PerspectiveCamera(32, 1.5, 0.05, 100);
+          const boxes = mx.cells.map((c) => {
+            mx.cellTop(c.lv, c.p, _v); const hw = 0.1125;
+            return { c, box: new THREE.Box3(new THREE.Vector3(_v.x - hw, -0.02, _v.z - hw), new THREE.Vector3(_v.x + hw, Math.max(0.07, _v.y), _v.z + hw)) };
+          });
+          sig = ''; wasAny = true;
+          queueMicrotask(() => { try { stage.renderer.compileAsync(sceneM, camM).catch(() => {}); } catch (e) { /* lost */ } }); // precompile the matrix view too
+          return { dev, mx, sceneM, camM, boxes, lightsM: [key, rim, fill] };
+        },
+        frame: frame3,
+        dispose(s) { st3 = null; s?.dev?.dispose(); s?.mx?.dispose(); s?.lightsM?.forEach((l) => l.shadow?.map?.dispose?.()); },
+        fallback() { root.classList.add('cs-nogl'); },
+      }));
     }
   },
 };

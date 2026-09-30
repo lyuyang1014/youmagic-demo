@@ -4,6 +4,7 @@ import { DATA } from './data.js';
 
 import hero from './sections/hero.js';
 import heritage from './sections/heritage.js';
+import inspiration from './sections/inspiration.js';
 import core7 from './sections/core7.js';
 import mechanism from './sections/mechanism.js';
 import skinlab from './sections/skinlab.js';
@@ -19,7 +20,7 @@ import safety from './sections/safety.js';
 import specs from './sections/specs.js';
 import footer from './sections/footer.js';
 
-const MODULES = [hero, heritage, core7, mechanism, skinlab, collagen, pulse, consoleSec, impedance, verify, protocol, clinical, results, safety, specs, footer];
+const MODULES = [hero, heritage, inspiration, core7, mechanism, skinlab, collagen, pulse, consoleSec, impedance, verify, protocol, clinical, results, safety, specs, footer];
 
 const { gsap, ScrollTrigger } = window;
 const root = document.documentElement;

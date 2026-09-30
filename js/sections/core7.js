@@ -1,4 +1,37 @@
 // #core7 — YŌUMAGIC® 核心技术优势 hub + 个性化 3 大射频参数
+// Hub centre = 3D YM5 console (ym3d/device.mjs) on a turntable inside a tilted 3D orbit; the 7 orbs are DOM
+// buttons projected from their 3D orbit positions; selecting one turns the console to the related part.
+import * as THREE from 'three';
+import * as YS from '../ym3d/stage.mjs';
+import { mount3D } from '../ym3d/host.mjs';
+import { createDevice } from '../ym3d/device.mjs';
+
+// host.mjs workaround (library issue): mount3D rebuilds on the SAME canvas after destroy() called
+// forceContextLoss(), so the second build fails ("WebGL unavailable", lost context) and the fallback fires.
+// Re-mount on a fresh canvas right after each far-away dispose; pointer listeners live on the container.
+function mountFresh(container, opts) {
+  const h = { m: null, get canvas() { return h.m?.canvas; }, get state() { return h.m?.state; }, invalidate() { h.m?.invalidate(); } };
+  const make = () => {
+    const m = mount3D(container, {
+      ...opts,
+      dispose(s) { opts.dispose?.(s); setTimeout(() => { if (h.m === m) { m.destroy(); make(); } }, 0); },
+    });
+    h.m = m;
+  };
+  make();
+  return h;
+}
+// Integration QA — scroll jank: the first frame of a freshly built view compiled every shader synchronously
+// (≈100–220 ms freeze mid-scroll). Views are built ~40 % of a viewport before they enter, so start a parallel
+// (KHR_parallel_shader_compile) compile right after build(); by the first on-screen frame the programs are ready.
+const precompileLib = (lib) => ({
+  ...lib,
+  createStage(T, canvas, opts) {
+    const st = lib.createStage(T, canvas, opts);
+    queueMicrotask(() => { try { st.renderer.compileAsync(st.scene, st.camera).catch(() => {}); } catch (e) { /* lost context */ } });
+    return st;
+  },
+});
 // src: DA p.2 (7 项核心技术原文、3 大射频参数 1…8 / 1…4 / 0.7s…1.5s)
 //      IFU p.9–10 (能量强度步进 0.5、制冷强度含义、1 个脉冲 = 0.1 s)
 //      IFU p.14–15 (能量输出表空白 = 限制输出；p.15 能量水平 ↔ 制冷强度范围/默认；调节功率档位或脉冲时间时制冷档位自动回默认)
@@ -470,10 +503,11 @@ export default {
 
         <div class="c7-hub">
           <div class="c7-stage" aria-label="七项核心技术">
-            <svg class="c7-lines" aria-hidden="true"></svg>
             <div class="c7-halo" aria-hidden="true"></div>
             <div class="c7-nmpa num" aria-hidden="true">YM5</div>
             <img class="c7-device" src="assets/img/device.webp" width="496" height="1186" alt="YOUMAGIC YM5 射频皮肤治疗仪主机" decoding="async" />
+            <div class="c7-3d" role="img" aria-label="YOUMAGIC YM5 射频皮肤治疗仪主机（三维模型）"></div>
+            <svg class="c7-lines" aria-hidden="true"></svg>
             ${items.map((it, i) => `
               <div class="c7-node" data-i="${i}" data-side="${ANG[i] < 0 ? 'l' : 'r'}" style="--acc:${ACC[i]}">
                 <span class="c7-node__num num" aria-hidden="true">${it.n}</span>
@@ -574,8 +608,15 @@ export default {
       </div>`;
 
     /* ================= orbit hub ================= */
+    // Desktop: the centre is the 3D YM5 console (ym3d/device.mjs) on a slow turntable inside a tilted 3D orbit
+    // (glowing ring, tick ring, dotted ring). The 7 technology orbs are DOM buttons projected every frame from
+    // their 3D positions on that orbit (perspective scale + depth order); the orbit sways in depth and swings the
+    // active node's side forward. Selecting a node turns the console to the related part (screen / handpiece /
+    // tip) and lights it (device highlight + screen state); the SVG connector runs from the orb to that part.
+    // No WebGL → the previous 2D ellipse layout with the product image.
     const stage = root.querySelector('.c7-stage');
     const svgEl = root.querySelector('.c7-lines');
+    const host3d = root.querySelector('.c7-3d');
     const nodes = [...root.querySelectorAll('.c7-node')];
     const orbs = nodes.map((n) => n.querySelector('.c7-orb'));
     const rings = nodes.map((n) => n.querySelector('.c7-orb__ring circle'));
@@ -588,17 +629,30 @@ export default {
       copy: detail.querySelector('.c7-detail__copy'),
     };
     const mqDesk = window.matchMedia('(min-width: 960px)');
-    let geo = null, orbitP = reduced ? 1 : 0, paths = [], pulses = [], lens = [];
+    let geo = null, orbitP = reduced ? 1 : 0, paths = [], pulses = [], lens = [], anchorsEl = [];
+    let use3d = false, m3 = null, active = -1;
 
     function measure() {
-      if (!mqDesk.matches) { geo = null; svgEl.innerHTML = ''; return; }
+      if (!mqDesk.matches) { geo = null; svgEl.innerHTML = ''; paths = []; pulses = []; anchorsEl = []; layout(); (m3?.state && m3.invalidate()); return; }
       const W = stage.clientWidth, H = stage.clientHeight;
       const devH = H * 0.76, devW = devH * (496 / 1186), cy = H * 0.5;
       geo = { W, H, cx: W / 2, cy, rx: W * 0.395, ry: H * 0.41, devW, devH, dx0: W / 2 - devW / 2, dx1: W / 2 + devW / 2, dy0: cy - devH / 2, dy1: cy + devH / 2 };
       svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      if (use3d) {
+        // 3D mode: connectors only (normalised dash units → no getTotalLength per frame); the 3D frame writes `d`
+        svgEl.innerHTML = nodes.map((n, i) => `<path class="c7-link-l" data-i="${i}" pathLength="1" style="--acc:${ACC[i]}"/><path class="c7-link-p" data-i="${i}" pathLength="1" style="--acc:${ACC[i]}"/><circle class="c7-anchor" data-i="${i}" r="2.5" style="--acc:${ACC[i]}"/>`).join('');
+        paths = [...svgEl.querySelectorAll('.c7-link-l')];
+        pulses = [...svgEl.querySelectorAll('.c7-link-p')];
+        anchorsEl = [...svgEl.querySelectorAll('.c7-anchor')];
+        paths.forEach((p) => { p.style.strokeDasharray = '1 1'; });
+        pulses.forEach((p) => { p.style.strokeDasharray = '0.07 1.2'; });
+        svgEl.querySelectorAll('[data-i]').forEach((p) => p.classList.toggle('is-on', +p.dataset.i === active));
+        fit.dirty = true;
+        (m3?.state && m3.invalidate());
+        return;
+      }
       // rings + bezel ticks
       let s = '';
-      s += `<defs><radialGradient id="c7g" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#8a5cf0" stop-opacity=".0"/><stop offset="1" stop-color="#8a5cf0" stop-opacity=".0"/></radialGradient></defs>`;
       s += `<ellipse class="c7-ring c7-ring--a" cx="${geo.cx}" cy="${geo.cy}" rx="${geo.rx}" ry="${geo.ry}"/>`;
       s += `<ellipse class="c7-ring c7-ring--b" cx="${geo.cx}" cy="${geo.cy}" rx="${geo.rx * 1.1}" ry="${geo.ry * 1.1}"/>`;
       s += `<ellipse class="c7-ring c7-ring--c" cx="${geo.cx}" cy="${geo.cy}" rx="${geo.rx * 0.74}" ry="${geo.ry * 0.74}"/>`;
@@ -630,14 +684,17 @@ export default {
       lens = paths.map((p) => p.getTotalLength());
       paths.forEach((p, i) => { p.style.strokeDasharray = `${lens[i]}`; });
       pulses.forEach((p, i) => { p.style.strokeDasharray = `26 ${lens[i] + 30}`; });
+      svgEl.querySelectorAll('[data-i]').forEach((p) => p.classList.toggle('is-on', +p.dataset.i === active));
       layout();
     }
 
+    // 2D (fallback) layout; in 3D mode the node transforms are written by the 3D frame
     function layout() {
       if (!geo) {
-        nodes.forEach((n) => { n.style.transform = ''; n.style.opacity = ''; });
+        nodes.forEach((n) => { n.style.transform = ''; n.style.opacity = ''; n.style.zIndex = ''; });
         return;
       }
+      if (use3d) { (m3?.state && m3.invalidate()); return; }
       const P = orbitP;
       nodes.forEach((n, i) => {
         const e = eo(cl((P - i * 0.055) / 0.55));
@@ -659,7 +716,7 @@ export default {
 
     // orbit progress proxy. ScrollTrigger.refresh() (fonts ready / resize) re-renders scrubbed tweens with
     // callbacks suppressed, so onUpdate alone can leave the constellation frozen mid-spiral — syncOrbit()
-    // re-reads the proxy from the refresh event and from the render loop.
+    // re-reads the proxy from the refresh event and from the render loops.
     let orbitProxy = null;
     const syncOrbit = () => { if (orbitProxy && Math.abs(orbitProxy.p - orbitP) > 1e-4) { orbitP = orbitProxy.p; layout(); } };
     if (!reduced) {
@@ -682,7 +739,7 @@ export default {
     nodes.forEach((n) => io.observe(n));
 
     /* ---- active node + detail ---- */
-    let active = -1, autoT = 0, hovering = false, userLock = 0;
+    let autoT = 0, hovering = false, userLock = 0;
     const AUTO = 4.6;
     function setActive(i, animate = true) {
       if (i === active) return;
@@ -694,6 +751,8 @@ export default {
       svgEl.querySelectorAll('[data-i]').forEach((p) => p.classList.toggle('is-on', +p.dataset.i === i));
       root.style.setProperty('--c7-acc', ACC[i]);
       autoT = 0;
+      focus.since = 0;
+      (m3?.state && m3.invalidate());
       const apply = () => {
         dEls.bg.textContent = it.n; dEls.idx.textContent = it.n;
         dEls.title.textContent = it.title; dEls.text.innerHTML = hl(it);
@@ -708,12 +767,285 @@ export default {
         },
       });
     }
+
+    /* ---- 3D: console + orbit (one WebGL context via mount3D) ---- */
+    // node → console part. Parts / states are the device component's own (highlight, screen, handpiece glow/frost);
+    // screen values = IFU 图8 reference state (data.screenRef).
+    const PART = [
+      { hl: 'tip', a: 'electrode', tt: 0.42, glow: 'flash' }, //           01 闪脉冲 — pulses leave the tip electrode
+      { hl: 'screen', a: 'screen', tt: -0.16, sel: 'pulse' }, //            02 动态脉冲 — 脉冲时间 on the touchscreen
+      { hl: 'tip', a: 'electrode', tt: 0.42, cool: 1, sel: 'cooling' }, //  03 多重制冷 — cryogen frost on the tip
+      { hl: 'handpiece', a: 'handpiece', tt: 0.36, cycle: true }, //        04 多维温控 — pre-cool → RF → post-cool
+      { hl: 'screen', a: 'screen', tt: -0.16, screen: 'activate' }, //     05 5+4 激活验真 — tip activation screen
+      { hl: 'screen', a: 'screen', tt: -0.16 }, //                          06 可视化能量密度 — density readout
+      { hl: 'handpiece', a: 'handpiece', tt: 0.36, glow: 'steady' }, //     07 AI 能量匹配 — matched RF output
+    ];
+    const REF = data.screenRef;
+    const svBase = { level: REF.level, cooling: REF.cooling, pulse: REF.pulse, shots: REF.shots, shotsTotal: REF.total, energyKJ: REF.energyKJ, ohm: REF.ohm, watt: REF.watt, density: REF.density };
+    const SVS = {};
+    for (const sel of [null, 'pulse', 'cooling']) for (const status of ['done', 'ready', 'firing']) SVS[`${sel}|${status}`] = { ...svBase, status, selected: sel };
+    const CY = 0.66, RX = 1.04, RY = 0.98, YAW0 = 0.14, PITCH = -0.2, FOV = 28, EL = 0.1;
+    const fit = { r: 5, ox: 0, oy: 0, w: 0, h: 0, dirty: true, desk: true };
+    const focus = { tt: -0.16, since: 0 };
+    const pose = { yaw: YAW0, tt: -0.16, mx: 0, my: 0, tx: 0, ty: 0, tgx: 0, tgy: CY };
+    const drag = { on: false, id: -1, x: 0, az: 0, v: 0, idle: 99 };
+    const V = new THREE.Vector3(), V2 = new THREE.Vector3(), SZ = new THREE.Vector2();
+    const nodePx = nodes.map(() => ({ x: 0, y: 0, d: 1, s: 1 }));
+    let stillKey = '', clock = 0;
+
+    const toPx = (cam, w, h, v) => { V2.copy(v).project(cam); return { x: (V2.x * 0.5 + 0.5) * w, y: (-V2.y * 0.5 + 0.5) * h }; };
+    function computeFit(s, stg, w, h) {
+      const cam = stg.camera, desk = !!geo;
+      cam.clearViewOffset();
+      s.ringG.rotation.set(PITCH, YAW0, 0, 'YXZ'); s.ringG.updateMatrixWorld(true);
+      const pts = [];
+      if (desk) {
+        for (let k = 0; k < 24; k++) { const a = (k / 24) * TAU; pts.push(new THREE.Vector3(Math.sin(a) * RX * 1.1, Math.cos(a) * RY * 1.1, 0).applyMatrix4(s.ringG.matrixWorld)); }
+      }
+      pts.push(new THREE.Vector3(0, 1.3, 0), new THREE.Vector3(0, 0, 0.32), new THREE.Vector3(0.34, 0.1, 0), new THREE.Vector3(-0.34, 0.1, 0));
+      // box the projection must fill (px): desktop leaves room for the orb labels, mobile frames the console alone
+      const box = desk ? { x0: w * 0.065, x1: w * 0.935, y0: h * 0.06, y1: h * 0.9 } : { x0: w * 0.2, x1: w * 0.8, y0: h * 0.05, y1: h * 0.95 };
+      let r = 6;
+      let bb = null;
+      for (let k = 0; k < 4; k++) {
+        stg.orbit({ target: [0, CY, 0], radius: r, azimuth: 0, elevation: EL, fov: FOV }); cam.updateMatrixWorld();
+        bb = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 };
+        for (const p of pts) { const q = toPx(cam, w, h, p); bb.x0 = Math.min(bb.x0, q.x); bb.x1 = Math.max(bb.x1, q.x); bb.y0 = Math.min(bb.y0, q.y); bb.y1 = Math.max(bb.y1, q.y); }
+        const kx = (bb.x1 - bb.x0) / (box.x1 - box.x0), ky = (bb.y1 - bb.y0) / (box.y1 - box.y0);
+        r *= Math.max(kx, ky);
+      }
+      stg.orbit({ target: [0, CY, 0], radius: r, azimuth: 0, elevation: EL, fov: FOV }); cam.updateMatrixWorld();
+      bb = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 };
+      for (const p of pts) { const q = toPx(cam, w, h, p); bb.x0 = Math.min(bb.x0, q.x); bb.x1 = Math.max(bb.x1, q.x); bb.y0 = Math.min(bb.y0, q.y); bb.y1 = Math.max(bb.y1, q.y); }
+      Object.assign(fit, { r, ox: (bb.x0 + bb.x1) / 2 - (box.x0 + box.x1) / 2, oy: (bb.y0 + bb.y1) / 2 - (box.y0 + box.y1) / 2, w, h, dirty: false, desk });
+    }
+
+    const GLOW_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+    const additive = { transparent: true, depthWrite: false, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneFactor };
+    function build(stg) {
+      const sc = stg.scene, desk = mqDesk.matches;
+      const { key, rim, fill } = stg.lights;
+      key.intensity = 2.1; key.position.set(2.2, 4.2, 3.4); key.target.position.set(0, 0.6, 0); sc.add(key.target);
+      Object.assign(key.shadow.camera, { left: -1, right: 1, top: 1.6, bottom: -0.4, near: 1, far: 12 });
+      key.shadow.mapSize.set(1024, 1024); key.shadow.camera.updateProjectionMatrix();
+      rim.intensity = 2.2; rim.position.set(-3, 2.4, -3.2); fill.intensity = 0.32;
+      const accL = new THREE.PointLight(0x43e6a8, 3, 5, 1.6); accL.position.set(1.4, 1.2, -1.0); sc.add(accL);
+
+      const dev = createDevice(THREE, { screenRes: desk ? 1024 : 768, detail: desk ? 'high' : 'low', back: true });
+      sc.add(dev.object3d);
+
+      // tilted orbit: main ring (tube, draws on), tick ring, dotted ring
+      const ringG = new THREE.Group(); ringG.position.set(0, CY, 0); sc.add(ringG);
+      const ellipse = (k, n = 160) => { const p = []; for (let i = 0; i < n; i++) { const a = (i / n) * TAU; p.push(new THREE.Vector3(Math.sin(a) * RX * k, Math.cos(a) * RY * k, 0)); } return new THREE.CatmullRomCurve3(p, true); };
+      const RU = { uReveal: { value: 0 }, uCol: { value: new THREE.Color(0xb49cff) }, uAcc: { value: new THREE.Color(ACC[0]) }, uHead: { value: 0 }, uI: { value: 1 } };
+      const ringMat = new THREE.ShaderMaterial({
+        uniforms: RU, ...additive, vertexShader: GLOW_VERT,
+        fragmentShader: /* glsl */`uniform float uReveal; uniform vec3 uCol; uniform vec3 uAcc; uniform float uHead; uniform float uI; varying vec2 vUv;
+          void main(){
+            float u = vUv.x; if (u > uReveal) discard;
+            float dh = abs(fract(u - uHead + 0.5) - 0.5);
+            vec3 c = uCol * 0.34 + uAcc * exp(-dh * dh * 900.0) * 1.3;
+            float edge = 1.0 - abs(vUv.y - 0.5) * 1.2;
+            c *= edge * uI;
+            gl_FragColor = vec4(c, max(c.r, max(c.g, c.b)));
+          }`,
+      });
+      const ring = new THREE.Mesh(new THREE.TubeGeometry(ellipse(1), 320, 0.0032, 6, true), ringMat); ringG.add(ring);
+      const tickMat = new THREE.MeshBasicMaterial({ color: 0x8a86a8, transparent: true, opacity: 0.55, depthWrite: false });
+      const NT = 90, ticks = new THREE.InstancedMesh(new THREE.BoxGeometry(0.0045, 1, 0.0045), tickMat, NT);
+      { const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), z = new THREE.Vector3(0, 0, 1);
+        for (let i = 0; i < NT; i++) {
+          const a = (i / NT) * TAU, major = i % 5 === 0, len = major ? 0.05 : 0.024;
+          const x = Math.sin(a) * RX * 1.1, y = Math.cos(a) * RY * 1.1, nx = Math.sin(a) / RX, ny = Math.cos(a) / RY; // ellipse normal
+          q.setFromAxisAngle(z, Math.atan2(ny, nx) - Math.PI / 2);
+          p.set(x + (nx / Math.hypot(nx, ny)) * len * 0.5, y + (ny / Math.hypot(nx, ny)) * len * 0.5, 0); s.set(1, len, 1);
+          ticks.setMatrixAt(i, m4.compose(p, q, s));
+        } }
+      ringG.add(ticks);
+      const dotsN = 140, dpos = new Float32Array(dotsN * 3);
+      for (let i = 0; i < dotsN; i++) { const a = (i / dotsN) * TAU; dpos[i * 3] = Math.sin(a) * RX * 0.76; dpos[i * 3 + 1] = Math.cos(a) * RY * 0.76; }
+      const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.BufferAttribute(dpos, 3));
+      const DU = { uI: { value: 1 }, uPx: { value: stg.renderer.getPixelRatio() } };
+      const dotMat = new THREE.ShaderMaterial({
+        uniforms: DU, ...additive,
+        vertexShader: 'uniform float uPx; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * mv; gl_PointSize = 2.6 * uPx; }',
+        fragmentShader: 'uniform float uI; void main(){ float d = length(gl_PointCoord - 0.5); float a = (1.0 - smoothstep(0.2, 0.5, d)) * uI; vec3 c = vec3(0.54, 0.36, 0.94) * a * 0.9; gl_FragColor = vec4(c, max(c.r, max(c.g, c.b))); }',
+      });
+      const dots = new THREE.Points(dg, dotMat); ringG.add(dots);
+
+      // floor: accent halo ring + soft pool under the base (premultiplied additive)
+      const FU = { uAcc: { value: new THREE.Color(ACC[0]) }, uI: { value: 0 } };
+      const floorMat = new THREE.ShaderMaterial({
+        uniforms: FU, ...additive, vertexShader: GLOW_VERT,
+        fragmentShader: /* glsl */`uniform vec3 uAcc; uniform float uI; varying vec2 vUv;
+          void main(){ vec2 d = (vUv - 0.5) * 2.0; float r = length(d);
+            float ringL = exp(-pow((r - 0.62) / 0.008, 2.0)) * 0.42 + exp(-pow((r - 0.62) / 0.07, 2.0)) * 0.1;
+            float pool = exp(-r * r * 6.0) * 0.35;
+            vec3 c = (uAcc * ringL + vec3(0.54, 0.36, 0.94) * pool) * uI * (1.0 - smoothstep(0.9, 1.0, r));
+            gl_FragColor = vec4(c, max(c.r, max(c.g, c.b))); }`,
+      });
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4).rotateX(-Math.PI / 2), floorMat);
+      floor.position.y = 0.001; floor.renderOrder = -2; sc.add(floor);
+
+      use3d = true;
+      root.classList.add('is-3d');
+      measure();
+      fit.dirty = true; stillKey = '';
+      return { dev, ringG, ring, ringMat, RU, ticks, tickMat, dots, dotMat, dg, DU, floor, floorMat, FU, accL };
+    }
+
+    function frame(s, stg, _t, dt) {
+      stg.renderer.getSize(SZ);
+      const w = SZ.x, h = SZ.y, desk = !!geo;
+      if (fit.dirty || w !== fit.w || h !== fit.h || desk !== fit.desk) computeFit(s, stg, w, h);
+      if (reduced) { const k = `${w}x${h}|${active}|${fit.r.toFixed(3)}|${desk}`; if (k === stillKey) return; stillKey = k; }
+      clock += dt;
+      const t = reduced ? 2.4 : clock;
+      const P = PART[Math.max(0, active)];
+      const acc = ACC[Math.max(0, active)];
+      focus.since += dt;
+
+      /* orbit build-in (scroll) */
+      const e0 = eo(cl((orbitP - 0.02) / 0.6));
+      const ringP = reduced ? 1 : cl((orbitP - 0.08) / 0.6);
+
+      /* console pose: turn to the active part; drag adds on top and eases home */
+      if (!drag.on) {
+        drag.idle += dt; drag.az += drag.v * dt; drag.v *= Math.exp(-dt * 3.5);
+        if (drag.idle > 3) { const home = Math.round(drag.az / TAU) * TAU; drag.az += (home - drag.az) * (1 - Math.exp(-dt * 1.2)); }
+      }
+      const idleSway = reduced ? 0 : 0.1 * Math.sin(t * 0.35);
+      const ttTarget = P.tt + idleSway + (1 - e0) * 2.4;
+      pose.tt += (ttTarget - pose.tt) * (reduced ? 1 : 1 - Math.exp(-dt * 2.6));
+      // orbit swings the active node's side forward, plus a slow sway
+      const side = Math.sin((ANG[Math.max(0, active)] * Math.PI) / 180);
+      const yawT = YAW0 - side * 0.2 + (reduced ? 0 : 0.07 * Math.sin(t * 0.23));
+      pose.yaw += (yawT - pose.yaw) * (reduced ? 1 : 1 - Math.exp(-dt * 1.4));
+      s.ringG.rotation.set(PITCH, pose.yaw, 0, 'YXZ');
+      s.ringG.visible = desk;
+      s.dots.rotation.z = reduced ? 0 : -t * 0.05;
+      s.ticks.rotation.z = reduced ? 0 : t * 0.02;
+      s.RU.uReveal.value = ringP * 1.001;
+      s.RU.uHead.value = (t * 0.06) % 1;
+      s.RU.uAcc.value.set(acc); s.FU.uAcc.value.set(acc);
+      s.tickMat.opacity = 0.5 * ringP; s.DU.uI.value = ringP;
+      s.FU.uI.value = e0;
+      s.accL.color.set(acc);
+
+      // part states
+      const cyc = (t % 5.2) / 5.2, cycRF = cyc > 0.27 && cyc < 0.73;
+      let glow = 0, cool = 0, status = 'done';
+      if (P.glow === 'flash') { const f = (t * 2) % 1; glow = f < 0.35 ? Math.sin((f / 0.35) * Math.PI) : 0; status = glow > 0.1 ? 'firing' : 'ready'; }
+      else if (P.glow === 'steady') { glow = 0.55 + 0.15 * Math.sin(t * 3); status = 'firing'; }
+      if (P.cool) { cool = 0.85; status = 'ready'; }
+      if (P.cycle) { glow = cycRF ? Math.sin(((cyc - 0.27) / 0.46) * Math.PI) : 0; cool = cycRF ? 0 : 0.8; status = cycRF ? 'firing' : 'ready'; }
+      if (reduced) { glow = Math.min(glow, 0.6); }
+      const sv = SVS[`${P.sel || null}|${status}`];
+      s.dev.update({
+        t, turntable: pose.tt + drag.az, screen: P.screen || 'treatment', screenValues: sv, rimGlow: 0.55 + 0.25 * e0,
+        highlight: focus.since < 3.2 || hovering ? P.hl : null, electrodeGlow: glow, cooling: cool,
+      });
+      stg.renderer.toneMappingExposure = 0.15 + 0.85 * e0;
+
+      /* camera: fitted framing + pointer parallax + a slight lean towards the active part */
+      pose.mx += (pose.tx - pose.mx) * 0.06; pose.my += (pose.ty - pose.my) * 0.06;
+      s.dev.anchor(P.a, V);
+      const lean = desk ? 0.12 : 0.25;
+      pose.tgx += (V.x * lean - pose.tgx) * (reduced ? 1 : 1 - Math.exp(-dt * 2));
+      pose.tgy += (CY + (V.y - CY) * lean - pose.tgy) * (reduced ? 1 : 1 - Math.exp(-dt * 2));
+      stg.orbit({ target: [pose.tgx, pose.tgy, 0], radius: fit.r * (1 + (1 - e0) * 0.25), azimuth: pose.mx * 0.1, elevation: EL - pose.my * 0.05 + (1 - e0) * 0.12, fov: FOV });
+      stg.camera.setViewOffset(w, h, fit.ox, fit.oy, w, h);
+      stg.camera.updateMatrixWorld();
+      stg.render();
+
+      /* DOM overlay: orbs projected from their 3D orbit positions; connectors from the orb to the device */
+      if (!desk) return;
+      const camPos = stg.camera.position, ref = fit.r;
+      s.ringG.updateMatrixWorld(true);
+      const order = [];
+      nodes.forEach((n, i) => {
+        const e = eo(cl((orbitP - i * 0.055) / 0.55));
+        const start = ANG[i] < 0 ? -205 : 205;
+        const a = ((start + (ANG[i] - start) * e) * Math.PI) / 180, rf = 0.45 + 0.55 * e;
+        V.set(Math.sin(a) * RX * rf, Math.cos(a) * RY * rf, 0).applyMatrix4(s.ringG.matrixWorld);
+        const d = V.distanceTo(camPos);
+        const q = toPx(stg.camera, w, h, V);
+        const sc = cl(ref / d, 0.8, 1.2) * (0.55 + 0.45 * e);
+        const np = nodePx[i]; np.x = q.x; np.y = q.y; np.d = d; np.s = sc;
+        n.style.transform = `translate(${q.x.toFixed(1)}px, ${q.y.toFixed(1)}px) translate(-50%, -50%) scale(${sc.toFixed(3)})`;
+        const depth = cl((ref - d) / (RX * 0.9) * 0.5 + 0.5);
+        n.style.opacity = (cl(e * 1.4) * (0.62 + 0.38 * depth)).toFixed(3);
+        order.push(i);
+      });
+      order.sort((a, b) => nodePx[b].d - nodePx[a].d).forEach((i, k) => { nodes[i].style.zIndex = String(2 + k); });
+      // console silhouette ports (projected shell edges at the node's height) and the active part anchor
+      const top = toPx(stg.camera, w, h, V.set(0, 1.12, 0)).y, bot = toPx(stg.camera, w, h, V.set(0, 0.36, 0)).y;
+      const cx = toPx(stg.camera, w, h, V.set(0, 0.7, 0)).x;
+      s.dev.anchor('rim', V); const xr = toPx(stg.camera, w, h, V).x;
+      s.dev.anchor('rimLeft', V); const xl = toPx(stg.camera, w, h, V).x;
+      const halfW = Math.max(18, Math.abs(xr - xl) / 2 - 6);
+      s.dev.anchor(P.a, V); const pa = toPx(stg.camera, w, h, V);
+      nodes.forEach((n, i) => {
+        if (!paths[i]) return;
+        const np = nodePx[i], isOn = i === active;
+        const leftSide = np.x < cx;
+        const ax = isOn ? pa.x : cx + (leftSide ? -halfW : halfW), ay = isOn ? pa.y : cl(np.y, top, bot);
+        const ux = np.x - ax, uy = np.y - ay, len = Math.hypot(ux, uy) || 1;
+        const rOrb = 46 * np.s, ex = np.x - (ux / len) * rOrb, ey = np.y - (uy / len) * rOrb;
+        const c1x = ax + (leftSide ? -1 : 1) * Math.abs(ux) * 0.45, c1y = ay;
+        const dd = `M${ax.toFixed(1)} ${ay.toFixed(1)}C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${(ex - ux * 0.2).toFixed(1)} ${(ey - uy * 0.2).toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+        paths[i].setAttribute('d', dd); pulses[i].setAttribute('d', dd);
+        anchorsEl[i].setAttribute('cx', ax.toFixed(1)); anchorsEl[i].setAttribute('cy', ay.toFixed(1));
+        const lp = reduced ? 1 : cl((orbitP - 0.5 - i * 0.035) / 0.3);
+        paths[i].style.strokeDashoffset = String(1 - lp);
+      });
+      const pk = pulses[active];
+      if (pk) pk.style.strokeDashoffset = String(-((t * 0.55) % 1.25) + 0.07);
+    }
+
+    function disposeState(s) {
+      if (!s) return;
+      s.dev.dispose();
+      for (const m of [s.ringMat, s.tickMat, s.dotMat, s.floorMat]) m.dispose();
+      s.ring.geometry.dispose(); s.ticks.geometry.dispose(); s.ticks.dispose(); s.dg.dispose(); s.floor.geometry.dispose();
+    }
+
+    // Integration QA: hide the 2D fallback image from the start when WebGL is available, so the mobile layout
+    // does not shrink by ~350 px when the 3D view builds (that shift left every ScrollTrigger below it stale).
+    if ('WebGLRenderingContext' in window) root.classList.add('gl-pending');
+    m3 = mountFresh(host3d, {
+      THREE, stageLib: precompileLib(YS), dpr: 1.5,
+      stageOpts: { fov: FOV, transparent: true, exposure: 1.0, envViolet: 0.6 },
+      build, frame, dispose: disposeState,
+      fallback: () => { use3d = false; root.classList.remove('gl-pending'); root.classList.add('no-gl'); measure(); },
+    });
+
     setActive(0, false);
+
+    // drag the console (turntable) — only when the press lands near it
+    if (!reduced) {
+      const cv = host3d; // events bubble from the (replaceable) canvas
+      const nearDevice = (ev) => {
+        const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+        return Math.abs(x - r.width / 2) < r.width * (geo ? 0.16 : 0.3) && y > r.height * 0.1 && y < r.height * 0.92;
+      };
+      cv.addEventListener('pointerdown', (ev) => {
+        if (!nearDevice(ev)) return;
+        drag.on = true; drag.id = ev.pointerId; drag.x = ev.clientX; drag.v = 0; drag.idle = 0;
+        cv.setPointerCapture?.(ev.pointerId); cv.style.cursor = 'grabbing';
+      });
+      cv.addEventListener('pointermove', (ev) => {
+        if (drag.on && ev.pointerId === drag.id) { const dx = ev.clientX - drag.x; drag.x = ev.clientX; drag.az += dx * 0.009; drag.v = dx * 0.009 * 60; drag.idle = 0; }
+        else if (ev.pointerType === 'mouse') cv.style.cursor = nearDevice(ev) ? 'grab' : '';
+      });
+      const up = (ev) => { if (!drag.on || ev.pointerId !== drag.id) return; drag.on = false; drag.idle = 0; cv.style.cursor = ''; };
+      cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    }
 
     orbs.forEach((o, i) => {
       o.addEventListener('pointerenter', () => { if (mqDesk.matches) { hovering = true; setActive(i); } });
       o.addEventListener('focus', () => setActive(i));
-      o.addEventListener('click', () => { setActive(i); userLock = 9; });
+      o.addEventListener('click', () => { setActive(i); userLock = 9; focus.since = 0; });
     });
     stage.addEventListener('pointerleave', () => { hovering = false; });
     detail.addEventListener('pointerenter', () => { hovering = true; });
@@ -721,7 +1053,7 @@ export default {
     dEls.dots.forEach((d, i) => d.addEventListener('click', () => { setActive(i); userLock = 9; }));
     dEls.go.addEventListener('click', () => ctx.scrollTo(items[active].anchor));
 
-    // pointer parallax on the device
+    // pointer parallax (3D camera; 2D fallback moves the image + halo)
     if (!reduced) {
       const dev = root.querySelector('.c7-device'), halo = root.querySelector('.c7-halo');
       const qx = gsap.quickTo(dev, 'xPercent', { duration: 1.2, ease: 'power3.out' });
@@ -731,8 +1063,11 @@ export default {
         if (!geo) return;
         const r = stage.getBoundingClientRect();
         const nx = (e.clientX - r.left) / r.width - 0.5, ny = (e.clientY - r.top) / r.height - 0.5;
-        qx(nx * 4); qhx(nx * 40); qhy(ny * 30);
+        pose.tx = nx * 2; pose.ty = ny * 2;
+        if (!use3d) qx(nx * 4);
+        qhx(nx * 40); qhy(ny * 30);
       });
+      stage.addEventListener('pointerleave', () => { pose.tx = pose.ty = 0; });
     }
 
     /* ---- canvases ---- */
@@ -777,7 +1112,7 @@ export default {
         rings.forEach((r, j) => { r.style.strokeDashoffset = j === active ? String(1 - prog) : '1'; });
         // signal packet travelling along the active connector (device → orb)
         const p = pulses[active];
-        if (p) p.style.strokeDashoffset = String(-((t * 160) % (lens[active] + 30)) + 26);
+        if (p && !use3d) p.style.strokeDashoffset = String(-((t * 160) % (lens[active] + 30)) + 26);
       });
     }
 
