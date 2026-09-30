@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SkinFX.Surface — 皮肤表面模拟</title>
+<link rel="stylesheet" href="../css/base.css" />
+<style>
+  body { background: #07070c; color: var(--text); }
+  .page { max-width: 1480px; margin: 0 auto; padding: 28px clamp(16px, 3vw, 40px) 60px; }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 24px; margin-bottom: 18px; }
+  .top h1 { font-family: var(--f-display); font-weight: 300; font-size: clamp(22px, 2.4vw, 32px); margin: 0; letter-spacing: .02em; }
+  .top h1 b { font-weight: 500; }
+  .sim { font-size: 12px; color: var(--text-3); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+  .live { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+  @media (max-width: 980px) { .live { grid-template-columns: minmax(0, 1fr); } }
+  .stage { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 16 / 10; box-shadow: 0 0 0 1px var(--line), 0 30px 80px -40px rgba(138, 92, 240, .5); }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  .stage .lbl { position: absolute; left: 14px; bottom: 12px; font-size: 11px; color: rgba(255,255,255,.72); background: rgba(7,7,12,.45); padding: 4px 10px; border-radius: 999px; backdrop-filter: blur(6px); pointer-events: none; }
+  .stage .side { position: absolute; top: 12px; font-family: var(--f-mono); font-size: 11px; letter-spacing: .12em; color: #fff; background: rgba(7,7,12,.5); padding: 4px 10px; border-radius: 999px; pointer-events: none; }
+  .stage .side.l { left: 14px; } .stage .side.r { right: 14px; }
+  .stage .perf { position: absolute; right: 12px; bottom: 12px; font-family: var(--f-mono); font-size: 10.5px; color: rgba(255,255,255,.6); pointer-events: none; }
+  .panel { background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)); border: 1px solid var(--line); border-radius: 16px; padding: 16px 16px 10px; display: grid; gap: 4px; }
+  .panel h3 { margin: 8px 0 2px; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .18em; color: var(--mint); font-weight: 400; text-transform: uppercase; }
+  .row { display: grid; grid-template-columns: 86px minmax(0, 1fr) 44px; align-items: center; gap: 8px; }
+  .row label { font-size: 12.5px; color: var(--text-2); }
+  .row output { font-family: var(--f-mono); font-size: 11.5px; text-align: right; color: var(--text); }
+  .row input[type=range] { width: 100%; accent-color: var(--violet); }
+  .toggles { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+  .toggles button { border: 1px solid var(--line-2); background: rgba(255,255,255,.03); color: var(--text-2); border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; }
+  .toggles button[aria-pressed="true"] { background: var(--violet-2); border-color: var(--violet); color: #fff; }
+  .grid-states { margin-top: 30px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 1100px) { .grid-states { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .grid-states { grid-template-columns: minmax(0, 1fr); } }
+  .tile { margin: 0; }
+  .tile canvas { width: 100%; aspect-ratio: 16 / 10; border-radius: 12px; display: block; background: #000; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+  .tile figcaption { font-size: 12px; color: var(--text-2); margin-top: 7px; display: grid; gap: 2px; min-width: 0; }
+  .tile figcaption code { font-family: var(--f-mono); font-size: 10px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .foot { margin-top: 26px; font-size: 11.5px; color: var(--text-3); line-height: 1.7; }
+  .nogl { padding: 40px; text-align: center; color: var(--text-2); }
+  body.solo .page { max-width: none; padding: 0; }
+  body.solo .top, body.solo .panel, body.solo .grid-states, body.solo .foot, body.solo .perf { display: none; }
+  body.solo .live { display: block; }
+  body.solo .stage { border-radius: 0; aspect-ratio: auto; height: 100vh; box-shadow: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <h1><b>SkinFX.Surface</b> · 皮肤表面微观模拟</h1>
+    <span class="sim">模拟示意 · 基于彩页组织学与临床资料的原理可视化，不代表个体实际效果</span>
+  </header>
+
+  <section class="live">
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="程序化皮肤表面实时模拟"></canvas>
+      <span class="side l" id="sideL" hidden>治疗前</span>
+      <span class="side r" id="sideR" hidden>治疗后（模拟）</span>
+      <span class="lbl">模拟示意 · 不代表个体实际效果</span>
+      <span class="perf" id="perf"></span>
+    </div>
+    <div class="panel" id="panel">
+      <div class="toggles">
+        <button id="bPlay" aria-pressed="true">时间 ▶</button>
+        <button id="bThermal" aria-pressed="false">热成像</button>
+        <button id="bTip" aria-pressed="false">治疗头</button>
+        <button id="bSplit" aria-pressed="false">对比</button>
+        <button id="bBench" aria-pressed="false">测速</button>
+      </div>
+      <h3>Skin</h3>
+      <div class="row"><label for="wrinkle">wrinkle</label><input id="wrinkle" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <div class="row"><label for="texture">texture</label><input id="texture" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <h3>RF · Cooling</h3>
+      <div class="row"><label for="heat">heat</label><input id="heat" type="range" min="0" max="1" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="cool">cool</label><input id="cool" type="range" min="0" max="1" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="tipx">tip.x</label><input id="tipx" type="range" min="0" max="1" step="0.005" value="0.5"><output></output></div>
+      <div class="row"><label for="tipy">tip.y</label><input id="tipy" type="range" min="0" max="1" step="0.005" value="0.5"><output></output></div>
+      <div class="row"><label for="tipr">tip.r</label><input id="tipr" type="range" min="0.05" max="0.6" step="0.005" value="0.3"><output></output></div>
+      <h3>Compare</h3>
+      <div class="row"><label for="split">split</label><input id="split" type="range" min="0" max="1" step="0.005" value="0.5"><output></output></div>
+      <div class="row"><label for="bw">before.w</label><input id="bw" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <div class="row"><label for="bt">before.t</label><input id="bt" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <h3>Light · Camera</h3>
+      <div class="row"><label for="light">light</label><input id="light" type="range" min="0" max="6.283" step="0.01" value="2.05"><output></output></div>
+      <div class="row"><label for="elevation">elevation</label><input id="elevation" type="range" min="0" max="1" step="0.01" value="0.2"><output></output></div>
+      <div class="row"><label for="tilt">tilt</label><input id="tilt" type="range" min="0" max="1" step="0.01" value="0.15"><output></output></div>
+      <div class="row"><label for="zoom">zoom</label><input id="zoom" type="range" min="0.5" max="2" step="0.01" value="1"><output></output></div>
+      <div class="row"><label for="panx">pan.x</label><input id="panx" type="range" min="-1" max="1" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="pany">pan.y</label><input id="pany" type="range" min="-1" max="1" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="time">time</label><input id="time" type="range" min="0" max="20" step="0.01" value="0"><output></output></div>
+    </div>
+  </section>
+
+  <section class="grid-states" id="grid" aria-label="状态网格"></section>
+
+  <p class="foot">SkinFX.Surface 为程序化生成的皮肤表面（非真实患者照片，不含面部特征），用于示意射频治疗机制与皱纹变化的原理。模拟示意 · 基于彩页组织学与临床资料的原理可视化，不代表个体实际效果。<br>
+  URL hash 可设定状态（便于截图），例如 <code>#wrinkle=0.35&amp;heat=0.7&amp;tip=0.5,0.5,0.3&amp;mode=thermal&amp;solo</code>。</p>
+</div>
+
+<script src="../js/fx/skin-surface.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var cv = $('cv');
+  var qs = new URLSearchParams(location.search);
+  var fx = window.SkinFX && SkinFX.Surface.create(cv, { seed: +qs.get('seed') || 7, dpr: +qs.get('dpr') || undefined, forceWebGL1: qs.get('gl') === '1' });
+  window.__fx = fx;
+  if (!fx) { $('stage').innerHTML = '<div class="nogl">此浏览器不支持 WebGL，无法显示实时模拟。</div>'; return; }
+
+  var ids = ['wrinkle', 'texture', 'heat', 'cool', 'tipx', 'tipy', 'tipr', 'split', 'bw', 'bt', 'light', 'elevation', 'tilt', 'zoom', 'panx', 'pany', 'time'];
+  var ui = {}; ids.forEach(function (k) { ui[k] = $(k); });
+  var flags = { play: true, thermal: false, tip: false, split: false };
+  var P = { time: 0, wrinkle: 1, texture: 1, heat: 0, cool: 0, tip: null, split: -1, before: { wrinkle: 1, texture: 1 },
+            light: 2.05, elevation: 0.2, tilt: 0.15, zoom: 1, pan: { x: 0, y: 0 }, mode: 'photo' };
+  var tipObj = { x: 0.5, y: 0.5, r: 0.3 };
+
+  // ---- hash state (for screenshots) ----
+  function applyHash() {
+    var h = location.hash.replace(/^#/, ''); if (!h) return;
+    h.split('&').forEach(function (kv) {
+      var p = kv.split('='), k = p[0], v = p[1];
+      if (k === 'solo') { document.body.classList.add('solo'); return; }
+      if (k === 'mode') { flags.thermal = v === 'thermal'; return; }
+      if (k === 'play') { flags.play = v !== '0'; return; }
+      if (k === 'tip') { var a = (v || '').split(',').map(Number); flags.tip = true; ui.tipx.value = a[0]; ui.tipy.value = a[1]; if (a[2]) ui.tipr.value = a[2]; return; }
+      if (k === 'split') { flags.split = true; ui.split.value = v; return; }
+      if (k === 'before') { var b = v.split(',').map(Number); ui.bw.value = b[0]; ui.bt.value = b[1]; return; }
+      if (k === 'pan') { var c = v.split(',').map(Number); ui.panx.value = c[0]; ui.pany.value = c[1]; return; }
+      if (ui[k]) ui[k].value = v;
+    });
+  }
+  applyHash();
+
+  function sync() {
+    ids.forEach(function (k) { var o = ui[k].nextElementSibling; o.textContent = (+ui[k].value).toFixed(2); });
+    P.wrinkle = +ui.wrinkle.value; P.texture = +ui.texture.value; P.heat = +ui.heat.value; P.cool = +ui.cool.value;
+    tipObj.x = +ui.tipx.value; tipObj.y = +ui.tipy.value; tipObj.r = +ui.tipr.value; P.tip = flags.tip ? tipObj : null;
+    P.split = flags.split ? +ui.split.value : -1; P.before.wrinkle = +ui.bw.value; P.before.texture = +ui.bt.value;
+    P.light = +ui.light.value; P.elevation = +ui.elevation.value; P.tilt = +ui.tilt.value; P.zoom = +ui.zoom.value;
+    P.pan.x = +ui.panx.value; P.pan.y = +ui.pany.value; P.mode = flags.thermal ? 'thermal' : 'photo';
+    if (!flags.play) P.time = +ui.time.value;
+    $('bPlay').setAttribute('aria-pressed', flags.play); $('bThermal').setAttribute('aria-pressed', flags.thermal);
+    $('bTip').setAttribute('aria-pressed', flags.tip); $('bSplit').setAttribute('aria-pressed', flags.split);
+    $('sideL').hidden = $('sideR').hidden = !flags.split;
+  }
+  ids.forEach(function (k) { ui[k].addEventListener('input', sync); });
+  $('bPlay').onclick = function () { flags.play = !flags.play; sync(); };
+  $('bThermal').onclick = function () { flags.thermal = !flags.thermal; sync(); };
+  $('bTip').onclick = function () { flags.tip = !flags.tip; sync(); };
+  $('bSplit').onclick = function () { flags.split = !flags.split; if (flags.split && +ui.wrinkle.value > 0.6) { ui.wrinkle.value = 0.35; ui.texture.value = 0.8; } sync(); };
+  sync();
+
+  // drag the split handle / tip on the canvas
+  var dragging = false;
+  function pointer(e) {
+    var r = cv.getBoundingClientRect(); var x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    if (flags.split) { ui.split.value = Math.max(0, Math.min(1, x)); }
+    else if (flags.tip) { ui.tipx.value = x; ui.tipy.value = y; }
+    sync();
+  }
+  cv.addEventListener('pointerdown', function (e) { dragging = true; cv.setPointerCapture(e.pointerId); pointer(e); });
+  cv.addEventListener('pointermove', function (e) { if (dragging) pointer(e); });
+  cv.addEventListener('pointerup', function () { dragging = false; });
+
+  function size() { var r = cv.getBoundingClientRect(); fx.resize(r.width, r.height); }
+  new ResizeObserver(size).observe(cv); size();
+
+  // ---- live loop (the demo drives time; the engine has no clock) ----
+  var t0 = performance.now(), last = t0, acc = 0, n = 0, holdPerf = 0;
+  function frame(now) {
+    if (flags.play) { P.time = (now - t0) / 1000; ui.time.value = P.time % 20; ui.time.nextElementSibling.textContent = (P.time % 20).toFixed(2); }
+    fx.render(P);
+    acc += now - last; last = now; n++;
+    if (acc > 500 && now > holdPerf) { $('perf').textContent = (1000 * n / acc).toFixed(0) + ' fps · ' + cv.width + '×' + cv.height + (fx.webgl2 ? ' · webgl2' : ' · webgl1'); acc = 0; n = 0; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---- benchmark: GPU time per frame (timer queries when available) ----
+  $('bBench').onclick = function () {
+    var gl = fx.gl, ext = fx.webgl2 && gl.getExtension('EXT_disjoint_timer_query_webgl2'), px = new Uint8Array(4);
+    var cases = [
+      ['shade', function (q, i) { q.time = i * 0.016; }],
+      ['wrinkle', function (q, i) { q.wrinkle = 0.5 + (i % 2) * 0.01; }],
+      ['camera', function (q, i) { q.zoom = 1 + (i % 2) * 0.01; }]
+    ];
+    var out = [];
+    function base() { var q = {}; for (var k in P) q[k] = P[k]; return q; }
+    if (!ext) {  // fallback: sync every frame with readPixels (includes sync overhead)
+      cases.forEach(function (c) {
+        var q = base(), s = performance.now();
+        for (var i = 0; i < 20; i++) { c[1](q, i); fx.render(q); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+        out.push(c[0] + ' ' + ((performance.now() - s) / 20).toFixed(2) + 'ms*');
+      });
+      $('perf').textContent = out.join(' · ') + ' @' + cv.width + '×' + cv.height;
+      holdPerf = performance.now() + 8000;
+      return;
+    }
+    var pending = cases.map(function (c) {
+      var q = base(), qs = [];
+      for (var i = 0; i < 20; i++) {
+        c[1](q, i); var tq = gl.createQuery();
+        gl.beginQuery(ext.TIME_ELAPSED_EXT, tq); fx.render(q); gl.endQuery(ext.TIME_ELAPSED_EXT); qs.push(tq);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); // serialise frames so timings don't overlap
+      }
+      return [c[0], qs];
+    });
+    setTimeout(function () {
+      pending.forEach(function (pc) {
+        var t = [];
+        pc[1].forEach(function (tq) {
+          if (gl.getQueryParameter(tq, gl.QUERY_RESULT_AVAILABLE)) t.push(gl.getQueryParameter(tq, gl.QUERY_RESULT) / 1e6);
+          gl.deleteQuery(tq);
+        });
+        t.sort(function (a, b) { return a - b; });
+        out.push(pc[0] + ' ' + (t.length ? t[t.length >> 1].toFixed(2) + 'ms' : 'n/a'));
+      });
+      $('perf').textContent = 'GPU ' + out.join(' · ') + ' @' + cv.width + '×' + cv.height;
+      holdPerf = performance.now() + 8000;
+      console.log('[SkinFX.Surface bench]', out.join(', '), cv.width + 'x' + cv.height);
+    }, 400);
+  };
+
+  // ---- deterministic state grid (one offscreen engine -> 2D tiles) ----
+  var STATES = [
+    ['治疗前 · 深皱纹', { wrinkle: 1, texture: 1 }],
+    ['治疗后（模拟）· 皱纹变浅', { wrinkle: 0.35, texture: 0.8 }],
+    ['射频加热 · 治疗头', { wrinkle: 1, heat: 0.75, tip: { x: 0.5, y: 0.5, r: 0.3 }, time: 1.2 }],
+    ['加热 + 冷媒保护', { wrinkle: 1, heat: 0.85, cool: 0.8, tip: { x: 0.5, y: 0.5, r: 0.3 }, time: 2.0 }],
+    ['热成像模式', { wrinkle: 1, heat: 0.8, cool: 0.5, mode: 'thermal', tip: { x: 0.5, y: 0.5, r: 0.3 }, time: 0.6 }],
+    ['前后对比 · split', { wrinkle: 0.35, texture: 0.8, split: 0.5, before: { wrinkle: 1, texture: 1 }, tilt: 0.35 }],
+    ['倾斜镜头 · 掠射光', { wrinkle: 1, tilt: 0.85, elevation: 0.1, light: 1.7 }],
+    ['顶光 · 放大 ×1.8', { wrinkle: 0.7, elevation: 0.75, zoom: 1.8, light: 2.6 }]
+  ];
+  var off = document.createElement('canvas');
+  var fxo = SkinFX.Surface.create(off, { seed: 7, dpr: 1, preserveDrawingBuffer: true });
+  var grid = $('grid');
+  if (fxo) {
+    var TW = 640, TH = 400; fxo.resize(TW, TH);
+    STATES.forEach(function (st) {
+      var fig = document.createElement('figure'); fig.className = 'tile';
+      var c = document.createElement('canvas'); c.width = TW; c.height = TH;
+      var cap = document.createElement('figcaption');
+      cap.innerHTML = '<span>' + st[0] + '</span><code>' + JSON.stringify(st[1]).replace(/"/g, '') + '</code>';
+      fig.appendChild(c); fig.appendChild(cap); grid.appendChild(fig);
+      fxo.render(st[1]);
+      c.getContext('2d').drawImage(off, 0, 0);
+      c.onclick = function () {
+        var s = st[1];
+        ui.wrinkle.value = s.wrinkle != null ? s.wrinkle : 1; ui.texture.value = s.texture != null ? s.texture : 1;
+        ui.heat.value = s.heat || 0; ui.cool.value = s.cool || 0;
+        flags.tip = !!s.tip; if (s.tip) { ui.tipx.value = s.tip.x; ui.tipy.value = s.tip.y; ui.tipr.value = s.tip.r; }
+        flags.split = s.split != null && s.split >= 0; if (flags.split) ui.split.value = s.split;
+        flags.thermal = s.mode === 'thermal';
+        ui.tilt.value = s.tilt != null ? s.tilt : 0.15; ui.elevation.value = s.elevation != null ? s.elevation : 0.2;
+        ui.light.value = s.light != null ? s.light : 2.05; ui.zoom.value = s.zoom || 1; sync();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+    });
+    fxo.dispose();
+  }
+})();
+</script>
+</body>
+</html>

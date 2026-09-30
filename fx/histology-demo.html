@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Histology FX Demo</title>
+<link rel="stylesheet" href="../css/base.css" />
+<style>
+  :root { color-scheme: dark; }
+  body { background: #07070c; color: var(--text); margin: 0; font-family: var(--f-sans); }
+  .page { max-width: 1480px; margin: 0 auto; padding: 28px clamp(16px, 3vw, 40px) 60px; }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 24px; margin-bottom: 18px; }
+  .top h1 { font-family: var(--f-display); font-weight: 300; font-size: clamp(22px, 2.4vw, 32px); margin: 0; letter-spacing: .02em; }
+  .top h1 b { font-weight: 500; }
+  .sim { font-size: 12px; color: var(--text-3); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+  .live { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
+  @media (max-width: 980px) { .live { grid-template-columns: minmax(0, 1fr); } }
+  .stage { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 16 / 10; box-shadow: 0 0 0 1px var(--line), 0 30px 80px -40px rgba(138, 92, 240, .5); }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  .stage .lbl { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; font-size: 11px; color: rgba(255,255,255,.8); background: rgba(7,7,12,.5); padding: 4px 12px; border-radius: 999px; backdrop-filter: blur(6px); pointer-events: none; white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 600px) { .stage .lbl { display: none; } }
+  .stage .mag { position: absolute; right: 14px; top: 12px; font-family: var(--f-mono); font-size: 11px; letter-spacing: .12em; color: #fff; background: rgba(7,7,12,.5); padding: 4px 10px; border-radius: 999px; pointer-events: none; }
+  .stage .side { position: absolute; top: 12px; font-family: var(--f-mono); font-size: 11px; letter-spacing: .08em; color: #fff; background: rgba(7,7,12,.5); padding: 4px 10px; border-radius: 999px; pointer-events: none; }
+  .stage .side.l { left: 14px; }
+  .stage .perf { position: absolute; right: 12px; bottom: 40px; font-family: var(--f-mono); font-size: 10.5px; color: rgba(255,255,255,.7); pointer-events: none; text-shadow: 0 1px 2px #000; }
+  .panel { background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px 12px; display: grid; gap: 4px; }
+  .panel h3 { margin: 8px 0 2px; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .18em; color: var(--mint); font-weight: 400; text-transform: uppercase; }
+  .row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 46px; align-items: center; gap: 8px; }
+  .row label { font-size: 12.5px; color: var(--text-2); }
+  .row output { font-family: var(--f-mono); font-size: 11.5px; text-align: right; color: var(--text); }
+  .row input[type=range] { width: 100%; accent-color: var(--violet); }
+  .toggles { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+  .toggles button { border: 1px solid var(--line-2); background: rgba(255,255,255,.03); color: var(--text-2); border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  .toggles button[aria-pressed="true"] { background: var(--violet-2); border-color: var(--violet); color: #fff; }
+  .ratio { font-family: var(--f-mono); font-size: 11.5px; color: var(--text-2); margin: 2px 0 6px; }
+  .ratio b { color: var(--text); font-weight: 500; }
+  .grid-states { margin-top: 30px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 1100px) { .grid-states { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .grid-states { grid-template-columns: minmax(0, 1fr); } }
+  .tile { margin: 0; }
+  .tile canvas { width: 100%; aspect-ratio: 16 / 10; border-radius: 12px; display: block; background: #000; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+  .tile figcaption { font-size: 12px; color: var(--text-2); margin-top: 7px; display: flex; justify-content: space-between; gap: 8px; }
+  .tile figcaption span { white-space: nowrap; }
+  .tile figcaption code { font-family: var(--f-mono); font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .foot { margin-top: 26px; font-size: 11.5px; color: var(--text-3); line-height: 1.7; }
+  .nogl { padding: 40px; text-align: center; color: var(--text-2); }
+  body.solo .page { max-width: none; padding: 0; }
+  body.solo .top, body.solo .panel, body.solo .grid-states, body.solo .foot, body.solo .perf { display: none; }
+  body.solo .live { display: block; }
+  body.solo .stage { border-radius: 0; aspect-ratio: auto; height: 100vh; box-shadow: none; }
+  body.gridonly .live { display: none; }
+  body.gridonly .grid-states { margin-top: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top">
+    <h1><b>SkinFX.Histology</b> · 组织学切片程序化模拟（H&amp;E / 暗场）</h1>
+    <span class="sim">模拟示意 · 基于彩页组织学与临床资料的原理可视化，不代表个体实际效果</span>
+  </div>
+
+  <div class="live">
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="程序化 H&E 皮肤组织切片模拟"></canvas>
+      <span class="side l" id="sideL" hidden>治疗前</span>
+      <span class="mag" id="magLbl">×2</span>
+      <span class="perf" id="perf"></span>
+      <span class="lbl">模拟示意 · 基于彩页组织学与临床资料的原理可视化，不代表个体实际效果</span>
+    </div>
+    <div class="panel" id="panel">
+      <div class="toggles">
+        <button type="button" id="play" aria-pressed="true">播放 time</button>
+        <button type="button" id="bench">性能测试</button>
+        <button type="button" id="reset">重置</button>
+      </div>
+      <div class="ratio" id="ratio"></div>
+      <h3>Timeline</h3>
+      <div class="row"><label for="time">time (s)</label><input id="time" type="range" min="0" max="20" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="week">week</label><input id="week" type="range" min="0" max="12" step="0.05" value="0"><output></output></div>
+      <h3>RF mechanism</h3>
+      <div class="row"><label for="heat">heat</label><input id="heat" type="range" min="0" max="1" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="cool">cool</label><input id="cool" type="range" min="0" max="1" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="current">current</label><input id="current" type="range" min="0" max="1" step="0.01" value="0"><output></output></div>
+      <div class="row"><label for="contraction">contraction</label><input id="contraction" type="range" min="0" max="1" step="0.01" value="0"><output></output></div>
+      <h3>Look</h3>
+      <div class="row"><label for="stain">stain</label><input id="stain" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <div class="row"><label for="magnification">magnification</label><input id="magnification" type="range" min="0" max="1" step="0.005" value="0"><output></output></div>
+      <div class="toggles" role="group" aria-label="highlight">
+        <button type="button" data-hl="0" aria-pressed="true">无高亮</button>
+        <button type="button" data-hl="1" aria-pressed="false">Ⅰ 型粗束</button>
+        <button type="button" data-hl="3" aria-pressed="false">Ⅲ 型细纤维</button>
+      </div>
+      <div class="row"><label for="highlightAmount">hl amount</label><input id="highlightAmount" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <h3>Compare</h3>
+      <div class="row"><label for="split">split (-1 off)</label><input id="split" type="range" min="-0.02" max="1" step="0.005" value="-0.02"><output></output></div>
+      <div class="row"><label for="bweek">before.week</label><input id="bweek" type="range" min="0" max="12" step="0.05" value="0"><output></output></div>
+      <div class="row"><label for="bcontraction">before.contr</label><input id="bcontraction" type="range" min="0" max="1" step="0.01" value="0"><output></output></div>
+      <h3>Camera</h3>
+      <div class="row"><label for="panx">pan.x</label><input id="panx" type="range" min="-2" max="2" step="0.005" value="0"><output></output></div>
+      <div class="row"><label for="pany">pan.y</label><input id="pany" type="range" min="-1" max="2" step="0.005" value="0"><output></output></div>
+      <div class="row"><label for="zoom">zoom</label><input id="zoom" type="range" min="0.5" max="4" step="0.01" value="1"><output></output></div>
+      <div class="row"><label for="seed">seed</label><input id="seed" type="range" min="1" max="40" step="1" value="1"><output></output></div>
+      <h3>Microscope</h3>
+      <div class="row"><label for="grain">grain</label><input id="grain" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <div class="row"><label for="vignette">vignette</label><input id="vignette" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <div class="row"><label for="chroma">chroma</label><input id="chroma" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+      <div class="row"><label for="dof">dof</label><input id="dof" type="range" min="0" max="1" step="0.01" value="1"><output></output></div>
+    </div>
+  </div>
+
+  <div class="grid-states" id="grid"></div>
+
+  <p class="foot">
+    模拟示意 · 基于彩页组织学与临床资料的原理可视化，不代表个体实际效果。胶原密度随时间轴按彩页胶原相对含量曲线（Ⅰ 型 1.00 → ≈1.42 → ≈1.62；Ⅲ 型 1.00 → ≈1.37 → ≈1.49，第 0 / 4 / 12 周，数值读自彩页图表，为近似值）平滑插值；
+    射频电流、热分布、冷却前沿与胶原即刻收缩均为一般射频原理的示意，不代表实际组织温度。
+    URL: <code>?solo#{"magnification":1,"week":12}</code> 全屏单帧；<code>?grid</code> 仅状态网格；<code>?noloop</code> 只渲染一帧（性能测试）。
+  </p>
+</div>
+
+<script src="../js/fx/histology.js"></script>
+<script>
+(function () {
+  'use strict';
+  var H = window.SkinFX && window.SkinFX.Histology;
+  var qs = location.search;
+  if (/solo/.test(qs)) document.body.classList.add('solo');
+  if (/grid/.test(qs)) document.body.classList.add('gridonly');
+
+  var cv = document.getElementById('cv');
+  var stage = document.getElementById('stage');
+  var seedEl = document.getElementById('seed');
+  var fx = H ? H.create(cv, { seed: +seedEl.value, dpr: Math.min(2, window.devicePixelRatio || 1) }) : null;
+  if (!fx) { stage.innerHTML = '<div class="nogl">WebGL 不可用 — 此处应显示静态图片回退。</div>'; }
+
+  var ids = ['time', 'week', 'heat', 'cool', 'current', 'contraction', 'stain', 'magnification', 'highlightAmount',
+    'split', 'bweek', 'bcontraction', 'panx', 'pany', 'zoom', 'seed', 'grain', 'vignette', 'chroma', 'dof'];
+  var el = {};
+  ids.forEach(function (id) { el[id] = document.getElementById(id); });
+  var highlight = 0;
+  var params = { pan: { x: 0, y: 0 }, before: { week: 0, contraction: 0 } };
+
+  function read() {
+    params.time = +el.time.value; params.week = +el.week.value; params.heat = +el.heat.value;
+    params.cool = +el.cool.value; params.current = +el.current.value; params.contraction = +el.contraction.value;
+    params.stain = +el.stain.value; params.magnification = +el.magnification.value;
+    params.highlight = highlight; params.highlightAmount = +el.highlightAmount.value;
+    var sp = +el.split.value; params.split = sp < 0 ? -1 : sp;
+    params.before.week = +el.bweek.value; params.before.contraction = +el.bcontraction.value;
+    params.pan.x = +el.panx.value; params.pan.y = +el.pany.value; params.zoom = +el.zoom.value;
+    params.grain = +el.grain.value; params.vignette = +el.vignette.value; params.chroma = +el.chroma.value; params.dof = +el.dof.value;
+    ids.forEach(function (id) { var o = el[id].parentNode.querySelector('output'); if (o) o.textContent = (+el[id].value).toFixed(id === 'seed' ? 0 : 2); });
+    var r = H.ratios(params.week);
+    document.getElementById('ratio').innerHTML = 'Ⅰ 型 <b>' + r.typeI.toFixed(2) + '</b> · Ⅲ 型 <b>' + r.typeIII.toFixed(2) + '</b>（彩页曲线插值，≈）';
+    var m = params.magnification;
+    document.getElementById('magLbl').textContent = '×' + Math.round(Math.exp(Math.log(2) + (Math.log(200) - Math.log(2)) * m) * params.zoom);
+    document.getElementById('sideL').hidden = params.split < 0;
+  }
+  function applyHash() {
+    var h = decodeURIComponent(location.hash.slice(1));
+    if (!h) return;
+    try {
+      var o = JSON.parse(h);
+      var map = { before: null, pan: null, highlight: null, seed: 'seed' };
+      Object.keys(o).forEach(function (k) {
+        if (k === 'highlight') { highlight = o[k]; syncHl(); return; }
+        if (k === 'before') { if (o.before.week != null) el.bweek.value = o.before.week; if (o.before.contraction != null) el.bcontraction.value = o.before.contraction; return; }
+        if (k === 'pan') { el.panx.value = o.pan.x || 0; el.pany.value = o.pan.y || 0; return; }
+        if (k === 'play') { playing = !!o.play; syncPlay(); return; }
+        if (el[k]) el[k].value = o[k];
+      });
+      if (o.seed != null) rebuild();
+    } catch (e) { console.warn('bad hash json', e); }
+  }
+  function syncHl() {
+    document.querySelectorAll('[data-hl]').forEach(function (b) { b.setAttribute('aria-pressed', String(+b.dataset.hl === highlight)); });
+  }
+  document.querySelectorAll('[data-hl]').forEach(function (b) {
+    b.addEventListener('click', function () { highlight = +b.dataset.hl; syncHl(); });
+  });
+
+  var playing = !/solo/.test(qs);
+  var playBtn = document.getElementById('play');
+  function syncPlay() { playBtn.setAttribute('aria-pressed', String(playing)); }
+  playBtn.addEventListener('click', function () { playing = !playing; syncPlay(); });
+  document.getElementById('reset').addEventListener('click', function () { location.hash = ''; location.reload(); });
+
+  function rebuild() {
+    if (!fx) return;
+    fx.dispose();
+    fx = H.create(cv, { seed: +el.seed.value, dpr: Math.min(2, window.devicePixelRatio || 1) });
+    size();
+  }
+  el.seed.addEventListener('change', rebuild);
+
+  function size() {
+    if (!fx) return;
+    var r = stage.getBoundingClientRect();
+    fx.resize(r.width, r.height);
+  }
+  window.addEventListener('resize', size);
+
+  // --- perf: real GPU time via a 1-px readback sync
+  var gl = cv.getContext('webgl2') || cv.getContext('webgl');
+  var px1 = new Uint8Array(4);
+  function bench() {
+    if (!fx) return;
+    var t0, n = 30, i, tA = 0, tB = 0;
+    read();
+    var p = JSON.parse(JSON.stringify(params));
+    fx.render(p); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px1);
+    t0 = performance.now();
+    for (i = 0; i < n; i++) { p.week = (i % 2) ? 6 : 6.01; fx.render(p); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px1); }
+    tA = (performance.now() - t0) / n;
+    t0 = performance.now();
+    for (i = 0; i < n; i++) { p.time = i * 0.016; p.heat = 0.8; p.current = 1; p.cool = 0.6; fx.render(p); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px1); }
+    tB = (performance.now() - t0) / n;
+    var inf = fx.info();
+    var msg = 'full ' + tA.toFixed(2) + ' ms · overlay-only ' + tB.toFixed(2) + ' ms · ' + inf.width + '×' + inf.height + ' (tissue ' + inf.tissueWidth + '×' + inf.tissueHeight + ') · ' + (fx.webgl2 ? 'WebGL2' : 'WebGL1');
+    document.getElementById('perf').textContent = msg;
+    window.__bench = { full: tA, overlay: tB, info: inf };
+    return window.__bench;
+  }
+  window.__bench_run = bench;
+  // offscreen still of any state (for screenshots / QA): returns a PNG data URL
+  window.__capture = function (p, w, h, dpr) {
+    var c = document.createElement('canvas');
+    var f = H.create(c, { seed: (p && p.seed) || 1, dpr: dpr || 1, preserveDrawingBuffer: true });
+    if (!f) return null;
+    f.resize(w || 1440, h || 900);
+    f.render(p || {});
+    var url = c.toDataURL('image/png');
+    f.dispose();
+    return url;
+  };
+  document.getElementById('bench').addEventListener('click', bench);
+
+  var last = 0;
+  function loop(ts) {
+    if (playing) {
+      var dt = last ? Math.min(0.05, (ts - last) / 1000) : 0;
+      el.time.value = ((+el.time.value + dt) % 20).toFixed(3);
+    }
+    last = ts;
+    read();
+    if (fx) fx.render(params);
+    requestAnimationFrame(loop);
+  }
+
+  // --- state grid (single shared engine, copied to 2D canvases)
+  var STATES = [
+    ['×2 · 治疗前', { magnification: 0, week: 0 }],
+    ['×2 · 治疗后 12 周', { magnification: 0, week: 12 }],
+    ['×200 · 治疗前', { magnification: 1, week: 0 }],
+    ['×200 · 治疗后 4 周', { magnification: 1, week: 4 }],
+    ['×200 · 治疗后 12 周', { magnification: 1, week: 12 }],
+    ['×2 · 射频 + 冷却 + 电流', { magnification: 0, heat: 0.9, cool: 0.7, current: 1, time: 1.3 }],
+    ['×200 · 电流 + 冷却', { magnification: 1, cool: 0.35, current: 1, heat: 0.6, time: 0.8 }],
+    ['×200 · 即刻收缩', { magnification: 1, contraction: 1, split: 0.5, before: { week: 0, contraction: 0 } }],
+    ['×200 · 对比 0 / 12 周', { magnification: 1, week: 12, split: 0.5, before: { week: 0 } }],
+    ['暗场 ×2 · 第 12 周', { magnification: 0, week: 12, stain: 0 }],
+    ['暗场 ×200 · Ⅰ 型高亮', { magnification: 1, week: 12, stain: 0, highlight: 1 }],
+    ['暗场 ×200 · Ⅲ 型高亮', { magnification: 1, week: 12, stain: 0, highlight: 3 }],
+    ['H&E ×200 · Ⅲ 型高亮', { magnification: 1, week: 4, highlight: 3 }],
+    ['×20 过渡 (mag 0.5)', { magnification: 0.5, week: 4 }],
+    ['暗场 · 射频全过程', { magnification: 0.3, stain: 0, heat: 1, cool: 0.6, current: 1, contraction: 0.6, time: 2.1 }],
+    ['stain 0.5 过渡', { magnification: 0.75, stain: 0.5, week: 8 }]
+  ];
+  function buildGrid() {
+    var grid = document.getElementById('grid');
+    var off = document.createElement('canvas');
+    var gfx = H && H.create(off, { seed: 1, dpr: 1 });
+    if (!gfx) return;
+    gfx.resize(640, 400);
+    STATES.forEach(function (s) {
+      var fig = document.createElement('figure'); fig.className = 'tile';
+      var c = document.createElement('canvas'); c.width = 640; c.height = 400;
+      var cap = document.createElement('figcaption');
+      cap.innerHTML = '<span>' + s[0] + '</span><code>' + JSON.stringify(s[1]).replace(/"/g, '') + '</code>';
+      fig.appendChild(c); fig.appendChild(cap); grid.appendChild(fig);
+      gfx.render(s[1]);
+      c.getContext('2d').drawImage(off, 0, 0);
+      c.addEventListener('click', function () { location.hash = encodeURIComponent(JSON.stringify(s[1])); resetControls(); applyHash(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    });
+    gfx.dispose();
+  }
+  var defaults = {};
+  ids.forEach(function (id) { defaults[id] = el[id].value; });
+  function resetControls() { ids.forEach(function (id) { if (id !== 'seed' && id !== 'time') el[id].value = defaults[id]; }); highlight = 0; syncHl(); }
+
+  if (fx) {
+    size();
+    applyHash();
+    syncPlay();
+    if (!/solo/.test(qs)) buildGrid();
+    if (/noloop/.test(qs)) { read(); fx.render(params); } else requestAnimationFrame(loop);
+  }
+  window.addEventListener('hashchange', function () { resetControls(); applyHash(); });
+})();
+</script>
+</body>
+</html>
